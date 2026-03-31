@@ -9,6 +9,7 @@ Google Classroom の生徒アカウントから、本人が閲覧可能な授業
 - Drive ファイル metadata、blob、Google Workspace export、コメントの保存
 - SQLite / JSON / artifact / manifest によるローカル保存
 - フル同期、差分同期、verify コマンド
+- Classroom 風の read-only ローカル viewer
 - `unsupported` / `skipped` / `failed` / `pending_materialization` の記録
 
 ## 既知の制約
@@ -18,6 +19,8 @@ Google Classroom の生徒アカウントから、本人が閲覧可能な授業
 - Google Workspace 文書の export は元データを完全再現しません。
 - 学校や組織のポリシーによっては OAuth や API アクセス自体が制限される場合があります。
 - `login` は `127.0.0.1` loopback redirect を使います。ローカル待受やブラウザ起動が制限される環境では失敗します。
+- `viewer` は `127.0.0.1` にのみ bind するローカル専用の read-only 閲覧機能です。
+- `viewer` では `People` タブ、投稿コメント、private comments は再現しません。
 
 ## セットアップ
 
@@ -47,7 +50,22 @@ node dist/src/cli.js login --credentials "C:\\path\\to\\installed-app-credential
 node dist/src/cli.js backup full --out "D:\\classroom-backup"
 node dist/src/cli.js backup sync --out "D:\\classroom-backup"
 node dist/src/cli.js verify --out "D:\\classroom-backup"
+node dist/src/cli.js viewer --out "D:\\classroom-backup" --open
 ```
+
+## Viewer
+
+`viewer` は、`backup full` または `backup sync` 実行後の `backup.sqlite` と保存済み JSON / artifact を read-only で参照するローカル閲覧 UI です。
+
+```bash
+node dist/src/cli.js backup full --out "D:\classroom-backup"
+node dist/src/cli.js viewer --out "D:\classroom-backup" --port 4173 --open
+```
+
+- 先に `backup full` または `backup sync` を実行してください。
+- viewer は `127.0.0.1` のみで待ち受けます。
+- viewer は DB 初期化や migration を行わず、read-only でバックアップを読みます。
+- 未再現要素として `People` タブ、投稿コメント、private comments、Classroom の一部装飾があります。
 
 ## 取得できるもの
 
@@ -73,4 +91,5 @@ node dist/src/cli.js verify --out "D:\\classroom-backup"
 ```bash
 npm test
 npm run build
+npm run lint
 ```

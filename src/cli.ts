@@ -6,6 +6,7 @@ import { runBackupFullCommand } from "./commands/backup-full.js";
 import { runBackupSyncCommand } from "./commands/backup-sync.js";
 import { runLoginCommand } from "./commands/login.js";
 import { runVerifyCommand } from "./commands/verify.js";
+import { runViewerCommand } from "./commands/viewer.js";
 
 const program = new Command();
 
@@ -37,5 +38,13 @@ program
   .description("Verify manifest and saved artifacts")
   .requiredOption("--out <dir>", "Backup output directory")
   .action(runVerifyCommand);
+
+program
+  .command("viewer")
+  .description("Start the local Classroom-style backup viewer")
+  .requiredOption("--out <dir>", "Backup output directory")
+  .option("--port <number>", "Local port to bind", "4173")
+  .option("--open", "Open the viewer in a browser after startup")
+  .action(runViewerCommand);
 
 await program.parseAsync(process.argv);

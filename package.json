@@ -11,10 +11,10 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && vite build --config vite.viewer.config.ts",
     "dev": "tsx src/cli.ts",
-    "test": "vitest run",
-    "lint": "tsc --noEmit -p tsconfig.json"
+    "test": "vitest run --config vitest.config.ts",
+    "lint": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.viewer.json"
   },
   "dependencies": {
     "better-sqlite3": "^11.10.0",
@@ -24,14 +24,24 @@
     "mime-types": "^2.1.35",
     "open": "^10.1.0",
     "p-limit": "^6.2.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-router-dom": "^7.5.3",
     "zod": "^3.24.2"
   },
   "devDependencies": {
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/react": "^19.1.2",
+    "@types/react-dom": "^19.1.2",
+    "@vitejs/plugin-react": "^4.4.1",
     "@types/better-sqlite3": "^7.6.12",
     "@types/mime-types": "^2.1.4",
     "@types/node": "^22.13.4",
+    "jsdom": "^26.0.0",
     "tsx": "^4.19.2",
     "typescript": "^5.8.2",
+    "vite": "^6.2.2",
     "vitest": "^3.0.8"
   }
 }

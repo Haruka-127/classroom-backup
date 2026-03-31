@@ -48,21 +48,40 @@ export function CoursePage() {
   }
 
   if (!course || !stream || !classwork) {
-    return <p className="muted">Loading course...</p>;
+    return <p className="muted">クラスを読み込み中...</p>;
   }
 
   return (
-    <section className="stack-lg">
-      <Link className="back-link" to="/">
-        Back to classes
-      </Link>
-      <header className="course-hero" style={{ background: course.bannerColor }}>
-        <p>{course.section || "No section"}</p>
-        <h1>{course.name}</h1>
-        <p>{course.room || "No room"}</p>
+    <section className="classroom-course-page stack-lg">
+      <div className="course-title-row">
+        <Link className="back-link" to="/">
+          Classroom
+        </Link>
+        <span className="muted">›</span>
+        <span>{course.name}</span>
+      </div>
+      <nav className="tabs classroom-tabs" aria-label="Course tabs">
+        <button className={tab === "stream" ? "tab-active" : ""} onClick={() => setSearchParams({ tab: "stream" })} type="button">
+          ストリーム
+        </button>
+        <button className={tab === "classwork" ? "tab-active" : ""} onClick={() => setSearchParams({ tab: "classwork" })} type="button">
+          授業
+        </button>
+      </nav>
+      <header className="course-hero classroom-course-hero" style={{ background: course.bannerColor }}>
+        <div className="course-hero-copy">
+          <p>{course.section || "クラス"}</p>
+          <h1>{course.name}</h1>
+          <p>{course.room || ""}</p>
+        </div>
+        <div className="course-hero-art" aria-hidden="true">
+          <span className="hero-shape hero-book" />
+          <span className="hero-shape hero-frame" />
+          <span className="hero-shape hero-sheet" />
+        </div>
       </header>
       {course.descriptionHeading || course.description ? (
-        <section className="panel stack-sm">
+        <section className="panel stack-sm classroom-course-summary">
           {course.descriptionHeading ? <h2>{course.descriptionHeading}</h2> : null}
           {course.description ? <p>{course.description}</p> : null}
         </section>
@@ -70,14 +89,6 @@ export function CoursePage() {
       {course.notices.map((notice) => (
         <StateNotice key={notice.code} notice={notice} />
       ))}
-      <nav className="tabs" aria-label="Course tabs">
-        <button className={tab === "stream" ? "tab-active" : ""} onClick={() => setSearchParams({ tab: "stream" })} type="button">
-          Stream
-        </button>
-        <button className={tab === "classwork" ? "tab-active" : ""} onClick={() => setSearchParams({ tab: "classwork" })} type="button">
-          Classwork
-        </button>
-      </nav>
       {tab === "stream" ? <StreamTab stream={stream} /> : <ClassworkTab classwork={classwork} />}
     </section>
   );

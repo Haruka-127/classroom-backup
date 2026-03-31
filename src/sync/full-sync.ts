@@ -129,7 +129,11 @@ export async function runFullSync(options: FullSyncOptions): Promise<FullSyncRes
 
       const courseMaterialRefs = [
         ...bundle.announcements.flatMap((item) =>
-          resolveCourseMaterialDriveReferences({ courseId: bundle.course.id, materials: item.materials ?? null }),
+          resolveCourseMaterialDriveReferences({
+            courseId: bundle.course.id,
+            announcementId: item.announcementId,
+            materials: item.materials ?? null,
+          }),
         ),
         ...bundle.courseWork.flatMap((item) =>
           resolveCourseMaterialDriveReferences({ courseId: bundle.course.id, courseWorkId: item.courseWorkId, materials: item.materials ?? null }),

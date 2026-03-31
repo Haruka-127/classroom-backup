@@ -37,25 +37,25 @@ export function CourseWorkMaterialDetailPage() {
   }
 
   if (!detail) {
-    return <p className="muted">Loading material...</p>;
+    return <p className="muted">教材を読み込み中...</p>;
   }
 
   return (
     <section className="stack-lg panel">
       <Link className="back-link" to={`/courses/${encodeURIComponent(detail.courseId)}?tab=classwork`}>
-        Back to classwork
+        授業に戻る
       </Link>
       <div className="stack-sm">
-        <span className="pill">Material</span>
+        <span className="pill">教材</span>
         <h1>{detail.title}</h1>
-        {detail.topicName ? <p className="muted">Topic: {detail.topicName}</p> : null}
+        {detail.topicName ? <p className="muted">トピック: {detail.topicName}</p> : null}
         {detail.description ? <p>{detail.description}</p> : null}
       </div>
       {detail.notices.map((notice) => (
         <StateNotice key={notice.code} notice={notice} />
       ))}
       <section className="stack-sm">
-        <h2>Attachments</h2>
+        <h2>添付</h2>
         <AttachmentList attachments={detail.attachments} />
       </section>
     </section>

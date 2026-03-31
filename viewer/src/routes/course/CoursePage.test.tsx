@@ -11,14 +11,14 @@ afterEach(() => {
 });
 
 describe("CoursePage", () => {
-  it("switches between Stream and Classwork tabs", async () => {
+  it("switches between stream and classwork tabs", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
       if (url.includes("/stream")) {
-        return new Response(JSON.stringify({ courseId: "course-1", items: [] }), { status: 200 });
+        return new Response(JSON.stringify({ courseId: "course-1", upcoming: [], items: [] }), { status: 200 });
       }
       if (url.includes("/classwork")) {
-        return new Response(JSON.stringify({ courseId: "course-1", sections: [{ topicId: null, topicName: "No topic", items: [] }] }), { status: 200 });
+        return new Response(JSON.stringify({ courseId: "course-1", sections: [{ topicId: null, topicName: "トピックなし", items: [] }] }), { status: 200 });
       }
       return new Response(
         JSON.stringify({
@@ -46,8 +46,8 @@ describe("CoursePage", () => {
       </MemoryRouter>,
     );
 
-    await waitFor(() => expect(screen.getByRole("button", { name: "Classwork" })).toBeTruthy());
-    await userEvent.click(screen.getByRole("button", { name: "Classwork" }));
-    expect(screen.getByText("No topic")).toBeTruthy();
+    await waitFor(() => expect(screen.getByRole("button", { name: "授業" })).toBeTruthy());
+    await userEvent.click(screen.getByRole("button", { name: "授業" }));
+    expect(screen.getByText("トピックなし")).toBeTruthy();
   });
 });

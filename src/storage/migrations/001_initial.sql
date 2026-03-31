@@ -96,6 +96,7 @@ CREATE TABLE IF NOT EXISTS student_submissions (
 CREATE TABLE IF NOT EXISTS drive_file_refs (
   ref_id INTEGER PRIMARY KEY AUTOINCREMENT,
   course_id TEXT NOT NULL,
+  announcement_id TEXT,
   course_work_id TEXT,
   course_work_material_id TEXT,
   submission_id TEXT,

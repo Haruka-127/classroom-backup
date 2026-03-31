@@ -23,7 +23,7 @@ describe("CourseWorkMaterialDetailPage", () => {
           topicName: null,
           updateTime: null,
           alternateLink: null,
-          notices: [{ code: "unsupported", tone: "info", title: "Not available from the API", description: "Unavailable" }],
+          notices: [{ code: "unsupported", tone: "info", title: "API では取得不可", description: "Unavailable" }],
           attachments: [],
         }),
         { status: 200 },
@@ -38,6 +38,6 @@ describe("CourseWorkMaterialDetailPage", () => {
       </MemoryRouter>,
     );
 
-    await waitFor(() => expect(screen.getByText("Not available from the API")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("API では取得不可")).toBeTruthy());
   });
 });

@@ -9,6 +9,7 @@ describe("material resolver", () => {
   it("marks STUDENT_COPY materials as pending materialization", () => {
     const refs = resolveCourseMaterialDriveReferences({
       courseId: "course-1",
+      announcementId: "ann-1",
       courseWorkId: "cw-1",
       materials: [
         {
@@ -22,6 +23,7 @@ describe("material resolver", () => {
 
     expect(refs).toEqual([
       expect.objectContaining({
+        announcementId: "ann-1",
         templateDriveFileId: "template-1",
         materializationState: "pending_materialization",
         shareMode: "STUDENT_COPY",

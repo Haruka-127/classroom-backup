@@ -40,6 +40,7 @@ function createBaseReference(record: Omit<DriveReferenceRecord, "attachmentType"
 
 export function resolveCourseMaterialDriveReferences(args: {
   courseId: string;
+  announcementId?: string | null;
   courseWorkId?: string | null;
   courseWorkMaterialId?: string | null;
   materials?: unknown[] | null;
@@ -54,6 +55,7 @@ export function resolveCourseMaterialDriveReferences(args: {
       return [
         createBaseReference({
           courseId: args.courseId,
+          announcementId: args.announcementId ?? null,
           courseWorkId: args.courseWorkId ?? null,
           courseWorkMaterialId: args.courseWorkMaterialId ?? null,
           submissionId: null,
@@ -72,6 +74,7 @@ export function resolveCourseMaterialDriveReferences(args: {
       return [
         createBaseReference({
           courseId: args.courseId,
+          announcementId: args.announcementId ?? null,
           courseWorkId: args.courseWorkId ?? null,
           courseWorkMaterialId: args.courseWorkMaterialId ?? null,
           submissionId: null,
@@ -91,6 +94,7 @@ export function resolveCourseMaterialDriveReferences(args: {
       return [
         createBaseReference({
           courseId: args.courseId,
+          announcementId: args.announcementId ?? null,
           courseWorkId: args.courseWorkId ?? null,
           courseWorkMaterialId: args.courseWorkMaterialId ?? null,
           submissionId: null,
@@ -110,6 +114,7 @@ export function resolveCourseMaterialDriveReferences(args: {
       return [
         createBaseReference({
           courseId: args.courseId,
+          announcementId: args.announcementId ?? null,
           courseWorkId: args.courseWorkId ?? null,
           courseWorkMaterialId: args.courseWorkMaterialId ?? null,
           submissionId: null,
@@ -147,6 +152,7 @@ export function resolveSubmissionDriveReferences(args: {
       return [
         createBaseReference({
           courseId: args.courseId,
+          announcementId: null,
           courseWorkId: args.courseWorkId,
           courseWorkMaterialId: null,
           submissionId: args.submissionId,
@@ -165,6 +171,7 @@ export function resolveSubmissionDriveReferences(args: {
       return [
         createBaseReference({
           courseId: args.courseId,
+          announcementId: null,
           courseWorkId: args.courseWorkId,
           courseWorkMaterialId: null,
           submissionId: args.submissionId,

@@ -12,11 +12,11 @@ export class DriveFileRefsRepository extends BaseRepository {
     const deleteStmt = this.db.prepare(`DELETE FROM drive_file_refs WHERE course_id = ?`);
     const insertStmt = this.db.prepare(
       `INSERT INTO drive_file_refs (
-         course_id, course_work_id, course_work_material_id, submission_id, source_type,
+         course_id, announcement_id, course_work_id, course_work_material_id, submission_id, source_type,
          attachment_type, drive_file_id, template_drive_file_id, submission_drive_file_id,
          share_mode, materialization_state, link_url, raw_json
        ) VALUES (
-         @courseId, @courseWorkId, @courseWorkMaterialId, @submissionId, @sourceType,
+         @courseId, @announcementId, @courseWorkId, @courseWorkMaterialId, @submissionId, @sourceType,
          @attachmentType, @driveFileId, @templateDriveFileId, @submissionDriveFileId,
          @shareMode, @materializationState, @linkUrl, @rawJson
        )`,
@@ -26,6 +26,7 @@ export class DriveFileRefsRepository extends BaseRepository {
       for (const record of records) {
         insertStmt.run({
           courseId: record.courseId,
+          announcementId: record.announcementId ?? null,
           courseWorkId: record.courseWorkId ?? null,
           courseWorkMaterialId: record.courseWorkMaterialId ?? null,
           submissionId: record.submissionId ?? null,

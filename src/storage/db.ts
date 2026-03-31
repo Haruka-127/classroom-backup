@@ -19,11 +19,22 @@ function loadInitialMigration(): string {
   return readFileSync(migrationPath, "utf8");
 }
 
+function ensureSchemaCompatibility(db: DatabaseConnection): void {
+  const driveFileRefsColumns = db
+    .prepare("PRAGMA table_info(drive_file_refs)")
+    .all() as Array<{ name: string }>;
+
+  if (!driveFileRefsColumns.some((column) => column.name === "announcement_id")) {
+    db.exec("ALTER TABLE drive_file_refs ADD COLUMN announcement_id TEXT");
+  }
+}
+
 export function openDatabase(databasePath: string): DatabaseConnection {
   const db = new Database(databasePath);
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
   db.exec(loadInitialMigration());
+  ensureSchemaCompatibility(db);
   return db;
 }
 

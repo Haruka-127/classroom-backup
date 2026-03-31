@@ -91,6 +91,7 @@ export interface SyncableStudentSubmission {
 
 export interface DriveReferenceRecord {
   courseId: string;
+  announcementId?: string | null;
   courseWorkId?: string | null;
   courseWorkMaterialId?: string | null;
   submissionId?: string | null;

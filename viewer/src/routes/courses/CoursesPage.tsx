@@ -34,20 +34,23 @@ export function CoursesPage() {
   }
 
   return (
-    <section className="stack-lg">
-      <div>
-        <h1>Your classes</h1>
-        <p className="muted">Read-only snapshots from your local backup.</p>
+    <section className="stack-lg classroom-home-page">
+      <div className="home-hero">
+        <div>
+          <h1>登録科目</h1>
+          <p className="muted">ローカルバックアップから復元したクラス一覧です。</p>
+        </div>
       </div>
       <div className="course-grid">
         {courses.map((course) => (
           <Link className="course-card" key={course.courseId} to={`/courses/${encodeURIComponent(course.courseId)}`}>
-            <div className="course-card-banner" style={{ background: course.bannerColor }} />
+            <div className="course-card-banner classroom-card-banner" style={{ background: course.bannerColor }}>
+              <span className="course-card-title-overlay">{course.name}</span>
+            </div>
             <div className="course-card-body">
-              <h2>{course.name}</h2>
-              <p>{course.section || "No section"}</p>
-              <p className="muted">{course.room || "No room"}</p>
-              <p className="muted">{course.updateTime ? new Date(course.updateTime).toLocaleString() : "Update time unavailable"}</p>
+              <p>{course.section || "クラス"}</p>
+              <p className="muted">{course.room || "教室情報なし"}</p>
+              <p className="muted">{course.updateTime ? new Date(course.updateTime).toLocaleString() : "更新時刻なし"}</p>
             </div>
           </Link>
         ))}

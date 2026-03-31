@@ -52,7 +52,7 @@ describe("CourseWorkDetailPage", () => {
       </MemoryRouter>,
     );
 
-    await waitFor(() => expect(screen.getByText("State: TURNED_IN")).toBeTruthy());
-    expect(screen.getByText("Short answer: 42")).toBeTruthy();
+    await waitFor(() => expect(screen.getByText("状態: 提出済み")).toBeTruthy());
+    expect(screen.getByText("記述式の回答: 42")).toBeTruthy();
   });
 });

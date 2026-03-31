@@ -81,6 +81,7 @@ interface StudentSubmissionRow {
 }
 
 interface DriveFileRefRow {
+  announcementId: string | null;
   sourceType: string;
   attachmentType: string;
   driveFileId: string | null;
@@ -109,7 +110,7 @@ interface DriveArtifactRow {
   sizeBytes: number | null;
 }
 
-const DEFAULT_NO_TOPIC_LABEL = "No topic";
+const DEFAULT_NO_TOPIC_LABEL = "トピックなし";
 
 function parseJson(rawJson: string | null): RawJsonRecord {
   if (!rawJson) {
@@ -132,6 +133,14 @@ function asArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
 }
 
+function asNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function getRecord(value: unknown): RawJsonRecord {
+  return typeof value === "object" && value !== null ? (value as RawJsonRecord) : {};
+}
+
 function createBannerColor(seed: string): string {
   const palette = ["#0f766e", "#1d4ed8", "#7c3aed", "#be185d", "#c2410c", "#15803d"];
   const total = [...seed].reduce((sum, char) => sum + char.charCodeAt(0), 0);
@@ -144,36 +153,62 @@ function compareByTimeDesc(left: string | null, right: string | null): number {
   return rightValue - leftValue;
 }
 
+function formatDueLabel(rawJson: RawJsonRecord): string | null {
+  const dueDate = getRecord(rawJson.dueDate);
+  const year = asNumber(dueDate.year);
+  const month = asNumber(dueDate.month);
+  const day = asNumber(dueDate.day);
+
+  if (year === null || month === null || day === null) {
+    return null;
+  }
+
+  const dueTime = getRecord(rawJson.dueTime);
+  const hours = asNumber(dueTime.hours);
+  const minutes = asNumber(dueTime.minutes);
+  const date = new Date(year, month - 1, day, hours ?? 23, minutes ?? 59);
+  return `提出期限: ${date.toLocaleDateString()}${hours !== null || minutes !== null ? ` ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : ""}`;
+}
+
+function formatPointsLabel(rawJson: RawJsonRecord): string | null {
+  const maxPoints = asNumber(rawJson.maxPoints);
+  return maxPoints === null ? null : `${maxPoints} 点`;
+}
+
+function getCreatorName(rawJson: RawJsonRecord): string | null {
+  return asString(getRecord(rawJson.creatorUserProfile).name) ?? asString(rawJson.creatorUserId);
+}
+
 function createNotice(code: string): ViewerStateNotice | null {
   switch (code) {
     case "pending_materialization":
-      return {
-        code,
-        tone: "warning",
-        title: "Waiting for materialization",
-        description: "A student copy has not been captured in this backup yet.",
-      };
+        return {
+          code,
+          tone: "warning",
+          title: "実体化待ち",
+          description: "生徒ごとのコピーがまだバックアップに保存されていません。",
+        };
     case "failed":
-      return {
-        code,
-        tone: "error",
-        title: "Artifact unavailable",
-        description: "The backup recorded this file, but a local artifact could not be saved.",
-      };
+        return {
+          code,
+          tone: "error",
+          title: "ローカルファイル未保存",
+          description: "バックアップには記録されていますが、ローカルファイルは保存されていません。",
+        };
     case "unsupported":
-      return {
-        code,
-        tone: "info",
-        title: "Not available from the API",
-        description: "Google Classroom does not expose this data through the public API used by the backup.",
-      };
+        return {
+          code,
+          tone: "info",
+          title: "API では取得不可",
+          description: "この情報は Google Classroom API から取得できません。",
+        };
     case "unavailable":
-      return {
-        code,
-        tone: "info",
-        title: "External attachment",
-        description: "This item links to external content and has no local Drive artifact.",
-      };
+        return {
+          code,
+          tone: "info",
+          title: "外部リンク",
+          description: "この項目は外部コンテンツへのリンクで、ローカルの Drive ファイルはありません。",
+        };
     default:
       return null;
   }
@@ -211,7 +246,75 @@ function canOpenInline(mimeType: string | null): boolean {
 }
 
 export class ViewerReadModel {
-  constructor(private readonly db: Database.Database) {}
+  private readonly hasAnnouncementIdColumn: boolean;
+
+  constructor(private readonly db: Database.Database) {
+    const driveFileRefsColumns = this.db.prepare("PRAGMA table_info(drive_file_refs)").all() as Array<{ name: string }>;
+    this.hasAnnouncementIdColumn = driveFileRefsColumns.some((column) => column.name === "announcement_id");
+  }
+
+  private getDriveFileRefAnnouncementSelect(): string {
+    return this.hasAnnouncementIdColumn ? "announcement_id AS announcementId," : "NULL AS announcementId,";
+  }
+
+  private getAnnouncementAttachments(courseId: string, announcementId: string, rawJson: string | null | undefined): ViewerAttachment[] {
+    if (this.hasAnnouncementIdColumn) {
+      return this.getAttachments(courseId, { announcementId });
+    }
+
+    return asArray(parseJson(rawJson ?? null).materials)
+      .map((material) => this.mapLegacyAnnouncementAttachment(material))
+      .filter((attachment): attachment is ViewerAttachment => Boolean(attachment));
+  }
+
+  private mapLegacyAnnouncementAttachment(material: unknown): ViewerAttachment | null {
+    const record = getRecord(material);
+    const driveFile = getRecord(record.driveFile);
+    const driveFileMeta = getRecord(driveFile.driveFile);
+    const driveFileId = asString(driveFileMeta.id);
+
+    if (driveFileId) {
+      const shareMode = asString(driveFile.shareMode);
+      const materializationState = shareMode === "STUDENT_COPY" ? "pending_materialization" : "ready";
+      return {
+        sourceType: "course_material",
+        attachmentType: "drive_file",
+        title: asString(driveFileMeta.title) ?? driveFileId,
+        linkUrl: asString(driveFileMeta.alternateLink),
+        materializationState,
+        driveFileId,
+        driveFile: this.getDriveFile(driveFileId),
+        notices: uniqueNotices([materializationState]),
+      };
+    }
+
+    const linkUrl =
+      asString(getRecord(record.link).url) ??
+      asString(getRecord(record.youtubeVideo).alternateLink) ??
+      asString(getRecord(record.form).formUrl);
+
+    if (!linkUrl) {
+      return null;
+    }
+
+    let attachmentType = "link";
+    if (asString(getRecord(record.youtubeVideo).alternateLink)) {
+      attachmentType = "youtube";
+    } else if (asString(getRecord(record.form).formUrl)) {
+      attachmentType = "form";
+    }
+
+    return {
+      sourceType: "course_material",
+      attachmentType,
+      title: linkUrl,
+      linkUrl,
+      materializationState: "unavailable",
+      driveFileId: null,
+      driveFile: null,
+      notices: uniqueNotices(["unavailable"]),
+    };
+  }
 
   listCourses(): ViewerCourseListResponse {
     const rows = this.db
@@ -266,10 +369,10 @@ export class ViewerReadModel {
     const announcements = this.db
       .prepare(
         `SELECT announcement_id AS announcementId, text, state, alternate_link AS alternateLink,
-                creation_time AS creationTime, update_time AS updateTime
+                creation_time AS creationTime, update_time AS updateTime, raw_json AS rawJson
          FROM announcements WHERE course_id = ?`,
       )
-      .all(courseId) as AnnouncementRow[];
+      .all(courseId) as Array<AnnouncementRow & { rawJson?: string }>;
 
     const courseWork = this.db
       .prepare(
@@ -286,30 +389,52 @@ export class ViewerReadModel {
         id: row.announcementId,
         title: row.text?.split("\n")[0]?.trim() || "Announcement",
         body: row.text,
+        authorName: getCreatorName(parseJson(row.rawJson ?? null)),
         topicName: null,
         alternateLink: row.alternateLink,
         state: row.state,
         workType: null,
         createdTime: row.creationTime,
         updateTime: row.updateTime,
+        dueLabel: null,
+        pointsLabel: null,
+        attachments: this.getAnnouncementAttachments(courseId, row.announcementId, row.rawJson),
         detailPath: null,
       })),
-      ...courseWork.map((row) => ({
-        itemType: "course_work" as const,
-        id: row.courseWorkId,
-        title: row.title ?? "Untitled work",
-        body: row.description,
-        topicName: row.topicId ? (topicsById.get(row.topicId) ?? DEFAULT_NO_TOPIC_LABEL) : null,
-        alternateLink: row.alternateLink,
-        state: row.state,
-        workType: row.workType,
-        createdTime: asString(parseJson(row.rawJson).creationTime),
-        updateTime: row.updateTime,
-        detailPath: `/courses/${encodeURIComponent(courseId)}/course-work/${encodeURIComponent(row.courseWorkId)}`,
-      })),
+      ...courseWork.map((row) => {
+        const rawJson = parseJson(row.rawJson);
+        return {
+          itemType: "course_work" as const,
+          id: row.courseWorkId,
+          title: row.title ?? "Untitled work",
+          body: row.description,
+          authorName: getCreatorName(rawJson),
+          topicName: row.topicId ? (topicsById.get(row.topicId) ?? DEFAULT_NO_TOPIC_LABEL) : null,
+          alternateLink: row.alternateLink,
+          state: row.state,
+          workType: row.workType,
+          createdTime: asString(rawJson.creationTime),
+          updateTime: row.updateTime,
+          dueLabel: formatDueLabel(rawJson),
+          pointsLabel: formatPointsLabel(rawJson),
+          attachments: this.getAttachments(courseId, { courseWorkId: row.courseWorkId }).slice(0, 4),
+          detailPath: `/courses/${encodeURIComponent(courseId)}/course-work/${encodeURIComponent(row.courseWorkId)}`,
+        };
+      }),
     ].sort((left, right) => compareByTimeDesc(left.updateTime ?? left.createdTime, right.updateTime ?? right.createdTime));
 
-    return { courseId, items };
+    const upcoming = items
+      .filter((item) => item.itemType === "course_work" && item.detailPath)
+      .filter((item) => item.dueLabel)
+      .slice(0, 3)
+      .map((item) => ({
+        id: item.id,
+        title: item.title,
+        dueLabel: item.dueLabel,
+        detailPath: item.detailPath!,
+      }));
+
+    return { courseId, upcoming, items };
   }
 
   getCourseClasswork(courseId: string): ViewerClassworkResponse | null {
@@ -384,13 +509,23 @@ export class ViewerReadModel {
       });
     }
 
+    const sectionNewestTime = (section: ViewerClassworkResponse["sections"][number]): number => {
+      const newest = section.items.reduce<number>((max, item) => {
+        const value = item.updateTime ? Date.parse(item.updateTime) : 0;
+        return value > max ? value : max;
+      }, 0);
+      return Number.isFinite(newest) ? newest : 0;
+    };
+
     const orderedSections = [
       ...topicOrder.map((topicId) => grouped.get(topicId)).filter((section): section is NonNullable<typeof section> => Boolean(section)),
       ...(grouped.has(null) ? [grouped.get(null)] : []).filter((section): section is NonNullable<typeof section> => Boolean(section)),
-    ].map((section) => ({
-      ...section,
-      items: [...section.items].sort((left, right) => compareByTimeDesc(left.updateTime, right.updateTime)),
-    }));
+    ]
+      .map((section) => ({
+        ...section,
+        items: [...section.items].sort((left, right) => compareByTimeDesc(left.updateTime, right.updateTime)),
+      }))
+      .sort((left, right) => sectionNewestTime(right) - sectionNewestTime(left));
 
     return { courseId, sections: orderedSections };
   }
@@ -500,6 +635,7 @@ export class ViewerReadModel {
     const refs = this.db
       .prepare(
         `SELECT source_type AS sourceType, attachment_type AS attachmentType, drive_file_id AS driveFileId,
+                ${this.getDriveFileRefAnnouncementSelect()}
                 template_drive_file_id AS templateDriveFileId, submission_drive_file_id AS submissionDriveFileId,
                 share_mode AS shareMode, materialization_state AS materializationState, link_url AS linkUrl, raw_json AS rawJson
          FROM drive_file_refs WHERE drive_file_id = ? OR template_drive_file_id = ? OR submission_drive_file_id = ?`,
@@ -532,7 +668,7 @@ export class ViewerReadModel {
         status: artifact.status,
         sizeBytes: artifact.sizeBytes,
         url: artifact.status === "saved" ? `/api/artifacts/${artifact.relativePath.split("/").map(encodeURIComponent).join("/")}` : null,
-        label: artifact.artifactKind === "blob" ? "Original file" : `Export${artifact.outputMimeType ? ` (${artifact.outputMimeType})` : ""}`,
+        label: artifact.artifactKind === "blob" ? "元ファイル" : `エクスポート${artifact.outputMimeType ? ` (${artifact.outputMimeType})` : ""}`,
         openInNewTab: canOpenInline(artifact.outputMimeType || file?.mimeType || null),
       })),
       notices: uniqueNotices([
@@ -562,10 +698,19 @@ export class ViewerReadModel {
 
   private getAttachments(
     courseId: string,
-    filters: { courseWorkId?: string; courseWorkMaterialId?: string; submissionId?: string },
+    filters: { announcementId?: string; courseWorkId?: string; courseWorkMaterialId?: string; submissionId?: string },
   ): ViewerAttachment[] {
+    if (filters.announcementId !== undefined && !this.hasAnnouncementIdColumn) {
+      return [];
+    }
+
     const clauses = ["course_id = @courseId"];
     const params: Record<string, string | null> = { courseId };
+
+    if (filters.announcementId !== undefined) {
+      clauses.push("announcement_id IS @announcementId");
+      params.announcementId = filters.announcementId;
+    }
 
     if (filters.courseWorkId !== undefined) {
       clauses.push("course_work_id IS @courseWorkId");
@@ -585,6 +730,7 @@ export class ViewerReadModel {
     const rows = this.db
       .prepare(
         `SELECT source_type AS sourceType, attachment_type AS attachmentType, drive_file_id AS driveFileId,
+                ${this.getDriveFileRefAnnouncementSelect()}
                 template_drive_file_id AS templateDriveFileId, submission_drive_file_id AS submissionDriveFileId,
                 share_mode AS shareMode, materialization_state AS materializationState, link_url AS linkUrl, raw_json AS rawJson
          FROM drive_file_refs WHERE ${clauses.join(" AND ")}`,

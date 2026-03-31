@@ -41,17 +41,27 @@ export interface ViewerStreamItem {
   id: string;
   title: string;
   body: string | null;
+  authorName: string | null;
   topicName: string | null;
   alternateLink: string | null;
   state: string | null;
   workType: string | null;
   createdTime: string | null;
   updateTime: string | null;
+  dueLabel: string | null;
+  pointsLabel: string | null;
+  attachments: ViewerAttachment[];
   detailPath: string | null;
 }
 
 export interface ViewerStreamResponse {
   courseId: string;
+  upcoming: Array<{
+    id: string;
+    title: string;
+    dueLabel: string | null;
+    detailPath: string;
+  }>;
   items: ViewerStreamItem[];
 }
 

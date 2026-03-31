@@ -1,6 +1,7 @@
 import React from "react";
 import { Link } from "react-router-dom";
 
+import { formatWorkTypeLabel } from "../../lib/labels";
 import type { ViewerClassworkResponse } from "../../lib/types";
 
 interface ClassworkTabProps {
@@ -9,7 +10,7 @@ interface ClassworkTabProps {
 
 export function ClassworkTab({ classwork }: ClassworkTabProps) {
   return (
-    <div className="stack-lg">
+    <div className="stack-lg classwork-layout">
       {classwork.sections.map((section) => (
         <details className="topic-section" key={section.topicId ?? "no-topic"} open>
           <summary>{section.topicName}</summary>
@@ -20,7 +21,7 @@ export function ClassworkTab({ classwork }: ClassworkTabProps) {
                   <strong>{item.title}</strong>
                   {item.description ? <p className="muted">{item.description}</p> : null}
                 </div>
-                <span className="pill">{item.itemType === "course_work" ? item.workType || "Work" : "Material"}</span>
+                <span className="pill">{item.itemType === "course_work" ? formatWorkTypeLabel(item.workType) : "教材"}</span>
               </Link>
             ))}
           </div>

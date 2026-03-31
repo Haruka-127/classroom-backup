@@ -1,12 +1,11 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { ViewerReadModel } from "./read-model.js";
-import { readArtifactFile, readViewerSpaFallback, readViewerStaticFile } from "./static-files.js";
+import { readViewerSpaFallback, readViewerStaticFile } from "./static-files.js";
 import type { ViewerApiErrorResponse } from "./types.js";
 
 export interface ViewerRouterDependencies {
   readModel: ViewerReadModel;
-  filesRoot: string;
   staticRoot: string;
 }
 
@@ -25,6 +24,14 @@ function sendError(response: ServerResponse, statusCode: number, message: string
 function sendFile(response: ServerResponse, file: { content: Buffer; contentType: string }): void {
   response.writeHead(200, { "content-type": file.contentType });
   response.end(file.content);
+}
+
+function sendArtifact(response: ServerResponse, artifact: { content: Buffer; contentType: string; downloadName: string }): void {
+  response.writeHead(200, {
+    "content-type": artifact.contentType,
+    "content-disposition": `inline; filename="${artifact.downloadName.replace(/"/g, "")}"`,
+  });
+  response.end(artifact.content);
 }
 
 function getRequestUrl(request: IncomingMessage): URL {
@@ -132,15 +139,20 @@ export async function routeViewerRequest(
     return;
   }
 
-  if (pathname.startsWith("/api/artifacts/")) {
-    const relativePath = pathname.slice("/api/artifacts/".length);
-    const artifact = await readArtifactFile(dependencies.filesRoot, relativePath);
+  if (segments[0] === "api" && segments[1] === "artifacts" && segments.length === 3) {
+    const artifactId = Number.parseInt(segments[2] ?? "", 10);
+    if (!Number.isInteger(artifactId) || artifactId <= 0) {
+      sendError(response, 404, "Artifact not found.");
+      return;
+    }
+
+    const artifact = dependencies.readModel.getArtifactContent(artifactId);
     if (!artifact) {
       sendError(response, 404, "Artifact not found.");
       return;
     }
 
-    sendFile(response, artifact);
+    sendArtifact(response, artifact);
     return;
   }
 

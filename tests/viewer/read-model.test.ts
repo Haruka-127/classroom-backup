@@ -1,5 +1,6 @@
 import os from "node:os";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { mkdtemp, writeFile } from "node:fs/promises";
 
 import Database from "better-sqlite3";
@@ -149,29 +150,47 @@ async function createViewerFixture() {
   repositories.driveFiles.upsert({ driveFileId: "drive-1", name: "Worksheet.pdf", mimeType: "application/pdf", size: "123" });
   repositories.driveFiles.upsert({ driveFileId: "drive-2", name: "Answer.pdf", mimeType: "application/pdf", size: "456" });
   repositories.driveFiles.upsert({ driveFileId: "drive-ann-1", name: "Announcement.pdf", mimeType: "application/pdf", size: "321" });
+  const announcementBlob = Buffer.from("announcement");
+  const announcementBlobId = createHash("sha256").update(announcementBlob).digest("hex");
+  repositories.artifactBlobs.upsert(announcementBlob, announcementBlobId, announcementBlob.byteLength);
   repositories.driveFileArtifacts.upsert({
     driveFileId: "drive-ann-1",
     artifactKind: "blob",
     outputMimeType: "application/pdf",
-    relativePath: "drive-ann-1/blob.pdf",
+    downloadName: "Announcement.pdf",
     status: "saved",
+    blobId: announcementBlobId,
     sizeBytes: 321,
+    checksumType: "sha256",
+    checksumValue: announcementBlobId,
   });
+  const drive1Blob = Buffer.from("worksheet");
+  const drive1BlobId = createHash("sha256").update(drive1Blob).digest("hex");
+  repositories.artifactBlobs.upsert(drive1Blob, drive1BlobId, drive1Blob.byteLength);
   repositories.driveFileArtifacts.upsert({
     driveFileId: "drive-1",
     artifactKind: "blob",
     outputMimeType: "application/pdf",
-    relativePath: "drive-1/blob.pdf",
+    downloadName: "Worksheet.pdf",
     status: "saved",
+    blobId: drive1BlobId,
     sizeBytes: 123,
+    checksumType: "sha256",
+    checksumValue: drive1BlobId,
   });
+  const drive2Blob = Buffer.from("answer");
+  const drive2BlobId = createHash("sha256").update(drive2Blob).digest("hex");
+  repositories.artifactBlobs.upsert(drive2Blob, drive2BlobId, drive2Blob.byteLength);
   repositories.driveFileArtifacts.upsert({
     driveFileId: "drive-2",
     artifactKind: "blob",
     outputMimeType: "application/pdf",
-    relativePath: "drive-2/blob.pdf",
+    downloadName: "Answer.pdf",
     status: "saved",
+    blobId: drive2BlobId,
     sizeBytes: 456,
+    checksumType: "sha256",
+    checksumValue: drive2BlobId,
   });
 
   await writeFile(path.join(root, "touch.txt"), "ok");
@@ -186,8 +205,8 @@ describe("ViewerReadModel", () => {
     expect(readModel.listCourses().courses).toHaveLength(1);
     expect(readModel.getCourse("course-1")?.name).toBe("Math");
     expect(readModel.getCourseStream("course-1")?.items[0]?.itemType).toBe("course_work");
-    expect(readModel.getCourseStream("course-1")?.items.find((item) => item.id === "ann-1")?.attachments[0]?.driveFile?.artifacts[0]?.url).toBe(
-      "/api/artifacts/drive-ann-1/blob.pdf",
+    expect(readModel.getCourseStream("course-1")?.items.find((item) => item.id === "ann-1")?.attachments[0]?.driveFile?.artifacts[0]?.url).toMatch(
+      /^\/api\/artifacts\/\d+$/,
     );
     expect(readModel.getCourseClasswork("course-1")?.sections).toHaveLength(2);
     expect(readModel.getCourseWorkDetail("course-1", "cw-1")?.submission?.shortAnswer).toBe("42");
@@ -276,9 +295,16 @@ describe("ViewerReadModel", () => {
         drive_file_id TEXT NOT NULL,
         artifact_kind TEXT NOT NULL,
         output_mime_type TEXT NOT NULL DEFAULT '',
-        relative_path TEXT NOT NULL,
+        download_name TEXT NOT NULL,
         status TEXT NOT NULL,
+        blob_id TEXT,
         size_bytes INTEGER
+      );
+      CREATE TABLE artifact_blobs (
+        blob_id TEXT PRIMARY KEY,
+        sha256 TEXT NOT NULL,
+        size_bytes INTEGER NOT NULL,
+        content BLOB NOT NULL
       );
     `);
 
@@ -319,16 +345,24 @@ describe("ViewerReadModel", () => {
       null,
       null,
     );
+    const legacyBlob = Buffer.from("legacy");
+    const legacyBlobId = createHash("sha256").update(legacyBlob).digest("hex");
+    db.prepare(`INSERT INTO artifact_blobs (blob_id, sha256, size_bytes, content) VALUES (?, ?, ?, ? )`).run(
+      legacyBlobId,
+      legacyBlobId,
+      legacyBlob.byteLength,
+      legacyBlob,
+    );
     db.prepare(
       `INSERT INTO drive_file_artifacts (
-         drive_file_id, artifact_kind, output_mime_type, relative_path, status, size_bytes
-       ) VALUES (?, ?, ?, ?, ?, ?)`,
-    ).run("drive-legacy-1", "blob", "application/pdf", "drive-legacy-1/blob.pdf", "saved", 123);
+         drive_file_id, artifact_kind, output_mime_type, download_name, status, blob_id, size_bytes
+       ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).run("drive-legacy-1", "blob", "application/pdf", "Legacy.pdf", "saved", legacyBlobId, 123);
 
     const readModel = new ViewerReadModel(db);
 
-    expect(readModel.getCourseStream("course-1")?.items.find((item) => item.id === "ann-1")?.attachments[0]?.driveFile?.artifacts[0]?.url).toBe(
-      "/api/artifacts/drive-legacy-1/blob.pdf",
+    expect(readModel.getCourseStream("course-1")?.items.find((item) => item.id === "ann-1")?.attachments[0]?.driveFile?.artifacts[0]?.url).toMatch(
+      /^\/api\/artifacts\/\d+$/,
     );
 
     db.close();

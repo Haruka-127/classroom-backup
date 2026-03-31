@@ -40,7 +40,6 @@ export async function startViewerServer(options: StartViewerServerOptions): Prom
   const server = createServer((request, response) => {
     void routeViewerRequest(request, response, {
       readModel,
-      filesRoot: paths.filesRoot,
       staticRoot,
     }).catch((error: unknown) => {
       response.writeHead(500, { "content-type": "application/json; charset=utf-8" });

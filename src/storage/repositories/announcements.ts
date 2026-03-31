@@ -25,7 +25,7 @@ export class AnnouncementsRepository extends BaseRepository {
           alternateLink: announcement.alternateLink ?? null,
           creationTime: announcement.creationTime ?? null,
           updateTime: announcement.updateTime ?? null,
-          rawJson: this.stringify(announcement),
+          rawJson: this.stringifyRaw(announcement),
         });
       }
     });

@@ -43,7 +43,7 @@ export class StudentSubmissionsRepository extends BaseRepository {
           assignedGrade: record.assignedGrade ?? null,
           draftGrade: record.draftGrade ?? null,
           alternateLink: record.alternateLink ?? null,
-          rawJson: this.stringify(record),
+          rawJson: this.stringifyRaw(record),
         });
       }
     });

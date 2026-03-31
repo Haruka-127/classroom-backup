@@ -6,13 +6,7 @@ const APP_NAME = "classroom-backup";
 
 export interface AppPaths {
   outputRoot: string;
-  filesRoot: string;
-  jsonRoot: string;
-  reportsRoot: string;
-  logsRoot: string;
   databasePath: string;
-  manifestPath: string;
-  statusReportPath: string;
   configRoot: string;
   oauthClientPath: string;
 }
@@ -35,13 +29,7 @@ export function resolveAppPaths(outDir: string): AppPaths {
 
   return {
     outputRoot,
-    filesRoot: path.join(outputRoot, "files"),
-    jsonRoot: path.join(outputRoot, "json"),
-    reportsRoot: path.join(outputRoot, "reports"),
-    logsRoot: path.join(outputRoot, "logs"),
     databasePath: path.join(outputRoot, "backup.sqlite"),
-    manifestPath: path.join(outputRoot, "manifest.json"),
-    statusReportPath: path.join(outputRoot, "reports", "status-report.json"),
     configRoot,
     oauthClientPath: path.join(configRoot, "oauth-client.json"),
   };
@@ -56,12 +44,5 @@ async function ensureDirectory(targetPath: string): Promise<void> {
 }
 
 export async function ensureAppDirectories(paths: AppPaths): Promise<void> {
-  await Promise.all([
-    ensureDirectory(paths.outputRoot),
-    ensureDirectory(paths.filesRoot),
-    ensureDirectory(paths.jsonRoot),
-    ensureDirectory(paths.reportsRoot),
-    ensureDirectory(paths.logsRoot),
-    ensureDirectory(paths.configRoot),
-  ]);
+  await Promise.all([ensureDirectory(paths.outputRoot), ensureDirectory(paths.configRoot)]);
 }

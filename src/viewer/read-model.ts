@@ -103,9 +103,10 @@ interface DriveFileRow {
 }
 
 interface DriveArtifactRow {
+  artifactId: number;
   artifactKind: "blob" | "export";
   outputMimeType: string;
-  relativePath: string;
+  downloadName: string;
   status: string;
   sizeBytes: number | null;
 }
@@ -202,6 +203,20 @@ function createNotice(code: string): ViewerStateNotice | null {
           title: "API では取得不可",
           description: "この情報は Google Classroom API から取得できません。",
         };
+    case "permission_denied":
+        return {
+          code,
+          tone: "warning",
+          title: "権限不足",
+          description: "このコースの一部データは権限不足のため取得できませんでした。",
+        };
+    case "not_returned":
+        return {
+          code,
+          tone: "info",
+          title: "現在は非表示",
+          description: "このコースは今回の同期で Classroom から返されませんでした。",
+        };
     case "unavailable":
         return {
           code,
@@ -231,14 +246,6 @@ function uniqueNotices(codes: Array<string | null | undefined>): ViewerStateNoti
   }
 
   return notices;
-}
-
-function decodeRelativePath(value: string): string {
-  return value
-    .split("/")
-    .filter(Boolean)
-    .map((segment) => decodeURIComponent(segment))
-    .join("/");
 }
 
 function canOpenInline(mimeType: string | null): boolean {
@@ -648,9 +655,9 @@ export class ViewerReadModel {
 
     const artifacts = this.db
       .prepare(
-        `SELECT artifact_kind AS artifactKind, output_mime_type AS outputMimeType, relative_path AS relativePath,
-                status, size_bytes AS sizeBytes
-         FROM drive_file_artifacts WHERE drive_file_id = ? ORDER BY artifact_kind ASC, relative_path ASC`,
+        `SELECT artifact_id AS artifactId, artifact_kind AS artifactKind, output_mime_type AS outputMimeType,
+                download_name AS downloadName, status, size_bytes AS sizeBytes
+         FROM drive_file_artifacts WHERE drive_file_id = ? ORDER BY artifact_kind ASC, artifact_id ASC`,
       )
       .all(driveFileId) as DriveArtifactRow[];
 
@@ -662,12 +669,13 @@ export class ViewerReadModel {
       modifiedTime: file?.modifiedTime ?? null,
       webViewLink: file?.webViewLink ?? null,
       artifacts: artifacts.map((artifact) => ({
+        artifactId: artifact.artifactId,
         artifactKind: artifact.artifactKind,
         outputMimeType: artifact.outputMimeType || null,
-        relativePath: artifact.relativePath,
+        downloadName: artifact.downloadName,
         status: artifact.status,
         sizeBytes: artifact.sizeBytes,
-        url: artifact.status === "saved" ? `/api/artifacts/${artifact.relativePath.split("/").map(encodeURIComponent).join("/")}` : null,
+        url: artifact.status === "saved" ? `/api/artifacts/${artifact.artifactId}` : null,
         label: artifact.artifactKind === "blob" ? "元ファイル" : `エクスポート${artifact.outputMimeType ? ` (${artifact.outputMimeType})` : ""}`,
         openInNewTab: canOpenInline(artifact.outputMimeType || file?.mimeType || null),
       })),
@@ -758,5 +766,28 @@ export class ViewerReadModel {
         notices: uniqueNotices([row.materializationState]),
       };
     });
+  }
+
+  getArtifactContent(artifactId: number): { content: Buffer; contentType: string; downloadName: string } | null {
+    const artifact = this.db
+      .prepare(
+        `SELECT b.content AS content, a.output_mime_type AS outputMimeType, a.download_name AS downloadName,
+                f.mime_type AS driveMimeType
+         FROM drive_file_artifacts a
+         JOIN artifact_blobs b ON b.blob_id = a.blob_id
+         LEFT JOIN drive_files f ON f.drive_file_id = a.drive_file_id
+         WHERE a.artifact_id = ? AND a.status = 'saved'`,
+      )
+      .get(artifactId) as { content: Buffer; outputMimeType: string; downloadName: string; driveMimeType: string | null } | undefined;
+
+    if (!artifact) {
+      return null;
+    }
+
+    return {
+      content: artifact.content,
+      contentType: artifact.outputMimeType || artifact.driveMimeType || "application/octet-stream",
+      downloadName: artifact.downloadName,
+    };
   }
 }

@@ -1,40 +1,46 @@
-import { access, readFile } from "node:fs/promises";
-import path from "node:path";
+import { createHash } from "node:crypto";
 
 import { resolveAppPaths } from "../config/app-paths.js";
+import { closeDatabase, openDatabase } from "../storage/db.js";
+import { createRepositories } from "../storage/repositories/index.js";
 
 export interface VerifyCommandOptions {
   out: string;
 }
 
-interface ManifestFile {
-  artifacts: Array<{
-    relativePath: string;
-    status: string;
-  }>;
-}
-
 export async function runVerifyCommand(options: VerifyCommandOptions): Promise<void> {
   const paths = resolveAppPaths(options.out);
-  const manifest = JSON.parse(await readFile(paths.manifestPath, "utf8")) as ManifestFile;
-  const missing: string[] = [];
+  const db = openDatabase(paths.databasePath);
 
-  for (const artifact of manifest.artifacts) {
-    if (artifact.status !== "saved") {
-      continue;
+  try {
+    const repositories = createRepositories(db);
+    const artifacts = repositories.driveFileArtifacts.listSavedWithBlobs();
+    const failures: string[] = [];
+
+    for (const artifact of artifacts) {
+      if (!artifact.blobId || !artifact.blobContent) {
+        failures.push(`artifact ${artifact.artifactId} is missing blob content`);
+        continue;
+      }
+
+      const actualSize = artifact.blobContent.byteLength;
+      const actualSha256 = createHash("sha256").update(artifact.blobContent).digest("hex");
+
+      if (artifact.sizeBytes !== null && artifact.sizeBytes !== undefined && artifact.sizeBytes !== actualSize) {
+        failures.push(`artifact ${artifact.artifactId} size mismatch`);
+      }
+
+      if (artifact.checksumType === "sha256" && artifact.checksumValue && artifact.checksumValue !== actualSha256) {
+        failures.push(`artifact ${artifact.artifactId} checksum mismatch`);
+      }
     }
 
-    const absolutePath = path.join(paths.filesRoot, artifact.relativePath);
-    try {
-      await access(absolutePath);
-    } catch {
-      missing.push(artifact.relativePath);
+    if (failures.length > 0) {
+      throw new Error(`Verify failed. ${failures.length} artifact checks failed: ${failures.join(", ")}`);
     }
-  }
 
-  if (missing.length > 0) {
-    throw new Error(`Verify failed. Missing artifact files: ${missing.join(", ")}`);
+    console.log(`Verify succeeded. Checked ${artifacts.length} saved artifacts in backup.sqlite.`);
+  } finally {
+    closeDatabase(db);
   }
-
-  console.log(`Verify succeeded. Checked ${manifest.artifacts.length} manifest artifacts.`);
 }

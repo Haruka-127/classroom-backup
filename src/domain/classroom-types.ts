@@ -18,6 +18,7 @@ export interface SyncableCourse {
   alternateLink?: string | null;
   creationTime?: string | null;
   updateTime?: string | null;
+  rawJson?: unknown;
 }
 
 export interface SyncableTopic {
@@ -25,6 +26,7 @@ export interface SyncableTopic {
   topicId: string;
   name?: string | null;
   updateTime?: string | null;
+  rawJson?: unknown;
 }
 
 export interface SyncableAnnouncement {
@@ -36,6 +38,7 @@ export interface SyncableAnnouncement {
   creationTime?: string | null;
   updateTime?: string | null;
   materials?: unknown[];
+  rawJson?: unknown;
 }
 
 export interface SyncableCourseWork {
@@ -49,6 +52,7 @@ export interface SyncableCourseWork {
   topicId?: string | null;
   updateTime?: string | null;
   materials?: unknown[];
+  rawJson?: unknown;
 }
 
 export interface SyncableCourseWorkMaterial {
@@ -61,6 +65,7 @@ export interface SyncableCourseWorkMaterial {
   topicId?: string | null;
   updateTime?: string | null;
   materials?: unknown[];
+  rawJson?: unknown;
 }
 
 export interface SyncableStudentSubmission {
@@ -87,6 +92,88 @@ export interface SyncableStudentSubmission {
   draftGrade?: number | null;
   assignedGrade?: number | null;
   alternateLink?: string | null;
+  rawJson?: unknown;
+}
+
+export interface SyncableCourseAlias {
+  courseId: string;
+  alias: string;
+  rawJson?: unknown;
+}
+
+export interface SyncableCourseGradingPeriodSettings {
+  courseId: string;
+  rawJson?: unknown;
+}
+
+export interface SyncableRubric {
+  courseId: string;
+  courseWorkId: string;
+  rubricId: string;
+  title?: string | null;
+  rawJson?: unknown;
+}
+
+export interface SyncableStudent {
+  courseId: string;
+  userId: string;
+  profileName?: string | null;
+  profilePhotoUrl?: string | null;
+  rawJson?: unknown;
+}
+
+export interface SyncableTeacher {
+  courseId: string;
+  userId: string;
+  profileName?: string | null;
+  profilePhotoUrl?: string | null;
+  rawJson?: unknown;
+}
+
+export interface SyncableUserProfile {
+  userId: string;
+  fullName?: string | null;
+  email?: string | null;
+  photoUrl?: string | null;
+  rawJson?: unknown;
+}
+
+export interface SyncableInvitation {
+  invitationId: string;
+  courseId?: string | null;
+  userId?: string | null;
+  role?: string | null;
+  rawJson?: unknown;
+}
+
+export interface SyncableStudentGroup {
+  courseId: string;
+  studentGroupId: string;
+  title?: string | null;
+  rawJson?: unknown;
+}
+
+export interface SyncableStudentGroupMember {
+  courseId: string;
+  studentGroupId: string;
+  userId: string;
+  rawJson?: unknown;
+}
+
+export interface SyncableGuardian {
+  studentId: string;
+  guardianId: string;
+  guardianName?: string | null;
+  invitedEmailAddress?: string | null;
+  rawJson?: unknown;
+}
+
+export interface SyncableGuardianInvitation {
+  studentId: string;
+  invitationId: string;
+  invitedEmailAddress?: string | null;
+  state?: string | null;
+  rawJson?: unknown;
 }
 
 export interface DriveReferenceRecord {
@@ -159,13 +246,31 @@ export interface SyncCheckpoint {
 }
 
 export interface ManifestArtifactEntry {
+  artifactId: number;
   driveFileId: string;
   artifactKind: "blob" | "export";
   outputMimeType?: string | null;
-  relativePath: string;
+  downloadName: string;
   status: ArtifactStatus;
+  blobId?: string | null;
   sizeBytes?: number | null;
   checksumType?: string | null;
   checksumValue?: string | null;
   sourceModifiedTime?: string | null;
+}
+
+export interface ArtifactBlobRecord {
+  blobId: string;
+  sha256: string;
+  sizeBytes: number;
+  content: Buffer;
+}
+
+export interface SyncRunSummary {
+  generatedAt: string;
+  runId: string;
+  counts: Record<string, number>;
+  pendingMaterializationCount: number;
+  failuresCount: number;
+  representativeMessages: string[];
 }

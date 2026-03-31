@@ -1,4 +1,5 @@
 import { mkdtemp, mkdir, writeFile, stat } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 
@@ -11,17 +12,16 @@ import { startViewerServer } from "../../src/viewer/server.js";
 async function createServerFixture() {
   const outDir = await mkdtemp(path.join(os.tmpdir(), "classroom-viewer-server-"));
   const databasePath = path.join(outDir, "backup.sqlite");
-  const filesRoot = path.join(outDir, "files");
   const staticRoot = await mkdtemp(path.join(os.tmpdir(), "classroom-viewer-static-"));
-  await mkdir(filesRoot, { recursive: true });
   await writeFile(path.join(staticRoot, "index.html"), "<html><body>viewer</body></html>");
   await mkdir(path.join(staticRoot, "assets"), { recursive: true });
   await writeFile(path.join(staticRoot, "assets", "app.js"), "console.log('viewer');");
-  await mkdir(path.join(filesRoot, "drive-1"), { recursive: true });
-  await writeFile(path.join(filesRoot, "drive-1", "blob.pdf"), "pdf");
 
   const db = openDatabase(databasePath);
   const repositories = createRepositories(db);
+  const content = Buffer.from("pdf");
+  const blobId = createHash("sha256").update(content).digest("hex");
+  repositories.artifactBlobs.upsert(content, blobId, content.byteLength);
   repositories.courses.upsert({ id: "course-1", name: "Math" }, "run-1");
   repositories.driveFileRefs.replaceForCourse("course-1", [
     {
@@ -44,8 +44,12 @@ async function createServerFixture() {
     driveFileId: "drive-1",
     artifactKind: "blob",
     outputMimeType: "application/pdf",
-    relativePath: "drive-1/blob.pdf",
+    downloadName: "blob.pdf",
     status: "saved",
+    blobId,
+    sizeBytes: content.byteLength,
+    checksumType: "sha256",
+    checksumValue: blobId,
   });
   closeDatabase(db);
 
@@ -74,12 +78,13 @@ describe("startViewerServer", () => {
     const fileResponse = await fetch(`${server.origin}/api/files/drive-1`);
     expect(fileResponse.status).toBe(200);
 
-    const artifactResponse = await fetch(`${server.origin}/api/artifacts/drive-1/blob.pdf`);
+    const filePayload = (await fileResponse.json()) as { artifacts: Array<{ artifactId: number }> };
+    const artifactResponse = await fetch(`${server.origin}/api/artifacts/${filePayload.artifacts[0]?.artifactId}`);
     expect(artifactResponse.status).toBe(200);
     expect(await artifactResponse.text()).toBe("pdf");
 
-    const traversalResponse = await fetch(`${server.origin}/api/artifacts/..%2F..%2Fsecret.txt`);
-    expect(traversalResponse.status).toBe(404);
+    const missingArtifactResponse = await fetch(`${server.origin}/api/artifacts/not-a-number`);
+    expect(missingArtifactResponse.status).toBe(404);
 
     const spaResponse = await fetch(`${server.origin}/courses/course-1`);
     expect(spaResponse.status).toBe(200);

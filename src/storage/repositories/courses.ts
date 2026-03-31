@@ -48,7 +48,7 @@ export class CoursesRepository extends BaseRepository {
         alternateLink: course.alternateLink ?? null,
         creationTime: course.creationTime ?? null,
         updateTime: course.updateTime ?? null,
-        rawJson: this.stringify(course),
+        rawJson: this.stringifyRaw(course),
         lastSeenRunId: runId,
         visibilityStatus,
       });

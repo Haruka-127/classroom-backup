@@ -6,4 +6,8 @@ export abstract class BaseRepository {
   protected stringify(value: unknown): string {
     return JSON.stringify(value);
   }
+
+  protected stringifyRaw(value: { rawJson?: unknown }): string {
+    return this.stringify(value.rawJson ?? value);
+  }
 }

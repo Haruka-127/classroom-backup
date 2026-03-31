@@ -134,16 +134,25 @@ export class GoogleDriveService implements DriveService {
   }
 
   async listComments(fileId: string): Promise<DriveCommentRecord[]> {
-    const response = await withRetry(() =>
-      this.api.comments.list({
-        fileId,
-        pageSize: 100,
-        fields:
-          "comments(id,content,createdTime,modifiedTime,resolved,deleted,quotedFileContent/value,author/displayName,replies(id,action,author/displayName,content,createdTime,modifiedTime,deleted))",
-      }),
-    );
+    const comments: DriveCommentRecord[] = [];
+    let pageToken: string | undefined;
 
-    return (response.data.comments ?? []).map((comment) => mapDriveComment(fileId, comment)).filter((comment) => comment.commentId);
+    do {
+      const response = await withRetry(() =>
+        this.api.comments.list({
+          fileId,
+          pageSize: 100,
+          pageToken,
+          fields:
+            "nextPageToken,comments(id,content,createdTime,modifiedTime,resolved,deleted,quotedFileContent/value,author/displayName,replies(id,action,author/displayName,content,createdTime,modifiedTime,deleted))",
+        }),
+      );
+
+      comments.push(...(response.data.comments ?? []).map((comment) => mapDriveComment(fileId, comment)).filter((comment) => comment.commentId));
+      pageToken = response.data.nextPageToken ?? undefined;
+    } while (pageToken);
+
+    return comments;
   }
 
   async downloadBlob(fileId: string): Promise<Buffer> {

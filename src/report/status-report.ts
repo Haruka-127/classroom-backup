@@ -1,15 +1,12 @@
-import { writeFile } from "node:fs/promises";
+import type { StatusRecord, SyncRunSummary } from "../domain/classroom-types.js";
 
-import type { StatusRecord } from "../domain/classroom-types.js";
-
-export interface StatusReport {
-  generatedAt: string;
+export function buildStatusReport(args: {
   runId: string;
-  counts: Record<string, number>;
   records: StatusRecord[];
-}
-
-export function buildStatusReport(runId: string, records: StatusRecord[]): StatusReport {
+  pendingMaterializationCount: number;
+  failuresCount: number;
+}): SyncRunSummary {
+  const { runId, records, pendingMaterializationCount, failuresCount } = args;
   const counts = records.reduce<Record<string, number>>((acc, record) => {
     acc[record.status] = (acc[record.status] ?? 0) + 1;
     return acc;
@@ -19,10 +16,8 @@ export function buildStatusReport(runId: string, records: StatusRecord[]): Statu
     generatedAt: new Date().toISOString(),
     runId,
     counts,
-    records,
+    pendingMaterializationCount,
+    failuresCount,
+    representativeMessages: [...new Set(records.map((record) => record.message).filter((message) => message.length > 0))].slice(0, 5),
   };
-}
-
-export async function writeStatusReport(filePath: string, report: StatusReport): Promise<void> {
-  await writeFile(filePath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
 }

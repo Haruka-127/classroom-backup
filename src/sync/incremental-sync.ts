@@ -9,9 +9,8 @@ import type { ClassroomService } from "../lib/google/classroom-client.js";
 import { GoogleClassroomService } from "../lib/google/classroom-client.js";
 import type { DriveService } from "../lib/google/drive-client.js";
 import { GoogleDriveService } from "../lib/google/drive-client.js";
-import { buildStatusReport, writeStatusReport } from "../report/status-report.js";
+import { buildStatusReport } from "../report/status-report.js";
 import { closeDatabase, openDatabase } from "../storage/db.js";
-import { writeManifest } from "../storage/manifest.js";
 import { createRepositories } from "../storage/repositories/index.js";
 import { loadCommittedCheckpoint } from "./checkpoints.js";
 import { runFullSync } from "./full-sync.js";
@@ -54,8 +53,7 @@ export async function runIncrementalSync(options: IncrementalSyncOptions) {
     logger?.log("Starting incremental sync");
 
     const existingCourseIds = new Set(repositories.courses.listIds());
-    const bundles = await classroom.fetchCourseBundles();
-    const visibleCourseIds = new Set(bundles.map((bundle) => bundle.course.id));
+    const visibleCourseIds = new Set((await classroom.listCourses()).map((course) => course.id));
 
     for (const courseId of existingCourseIds) {
       if (!visibleCourseIds.has(courseId)) {
@@ -75,22 +73,19 @@ export async function runIncrementalSync(options: IncrementalSyncOptions) {
       : [];
     logger?.log(`Re-fetched ${changedFileIds.length} changed Drive files since last committed checkpoint.`);
 
-    const report = buildStatusReport(result.runId, [
-      ...result.statusRecords,
-      {
-        runId: result.runId,
-        scope: "drive_changes",
-        entityType: "checkpoint",
-        entityId: checkpoint?.committedStartPageToken ?? "none",
-        status: "success",
-        message: `Re-fetched ${changedFileIds.length} changed Drive files since last committed checkpoint.`,
-      },
-    ]);
-    await writeStatusReport(paths.statusReportPath, report);
-    await writeManifest(paths.manifestPath, {
-      generatedAt: now(),
+    const report = buildStatusReport({
       runId: result.runId,
-      artifacts: result.artifacts,
+      records: [
+        ...result.statusRecords,
+        {
+          runId: result.runId,
+          scope: "drive_changes",
+          entityType: "checkpoint",
+          entityId: checkpoint?.committedStartPageToken ?? "none",
+          status: "success",
+          message: `Re-fetched ${changedFileIds.length} changed Drive files since last committed checkpoint.`,
+        },
+      ],
       pendingMaterializationCount: result.pendingMaterializationCount,
       failuresCount: result.failuresCount,
     });

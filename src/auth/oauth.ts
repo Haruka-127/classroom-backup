@@ -15,6 +15,29 @@ export interface LoginResult {
   authorizationUrl: string;
 }
 
+const EQUIVALENT_GRANTED_SCOPES: Record<string, string[]> = {
+  "https://www.googleapis.com/auth/classroom.coursework.me.readonly": [
+    "https://www.googleapis.com/auth/classroom.student-submissions.me.readonly",
+  ],
+};
+
+function parseStoredScopes(scope: string | null | undefined): Set<string> {
+  return new Set(
+    (scope ?? "")
+      .split(/\s+/)
+      .map((value) => value.trim())
+      .filter(Boolean),
+  );
+}
+
+function hasGrantedScope(grantedScopes: Set<string>, requiredScope: string): boolean {
+  if (grantedScopes.has(requiredScope)) {
+    return true;
+  }
+
+  return (EQUIVALENT_GRANTED_SCOPES[requiredScope] ?? []).some((scope) => grantedScopes.has(scope));
+}
+
 function toBase64Url(value: Buffer): string {
   return value.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
@@ -159,6 +182,12 @@ export async function createAuthorizedClient(options: {
   const storedTokens = await options.tokenStore.load(options.accountKey);
   if (!storedTokens?.refresh_token && !storedTokens?.access_token) {
     throw new Error("Stored OAuth tokens were not found. Run `login` first.");
+  }
+
+  const grantedScopes = parseStoredScopes(storedTokens.scope);
+  const missingScopes = options.scopes.filter((scope) => !hasGrantedScope(grantedScopes, scope));
+  if (missingScopes.length > 0) {
+    throw new Error("Stored OAuth tokens do not include the required scopes. Run `login` again.");
   }
 
   const client = new google.auth.OAuth2(

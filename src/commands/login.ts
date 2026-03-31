@@ -38,6 +38,7 @@ export async function runLoginCommand(options: LoginCommandOptions): Promise<voi
   console.log(`Logged in successfully using credentials source: ${resolvedClient.source} (${resolvedClient.sourcePath})`);
   console.log(`Registered OAuth client saved to: ${paths.oauthClientPath}`);
   console.log(`Drive account: ${about.data.user?.emailAddress ?? "unknown"}`);
+  console.log("If OAuth scopes were added or updated, run `login` again to refresh the stored token.");
   console.log(`If the browser did not open automatically, use this URL:`);
   console.log(loginResult.authorizationUrl);
 }

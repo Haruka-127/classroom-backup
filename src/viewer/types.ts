@@ -90,9 +90,10 @@ export interface ViewerClassworkResponse {
 }
 
 export interface ViewerArtifactLink {
+  artifactId: number;
   artifactKind: "blob" | "export";
   outputMimeType: string | null;
-  relativePath: string;
+  downloadName: string;
   status: string;
   sizeBytes: number | null;
   url: string | null;

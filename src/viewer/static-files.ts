@@ -27,35 +27,6 @@ export function resolveViewerStaticRoot(): string {
   return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0]!;
 }
 
-export function resolveArtifactAbsolutePath(filesRoot: string, relativePath: string): string | null {
-  const decodedPath = relativePath
-    .split("/")
-    .filter(Boolean)
-    .map((segment) => decodeURIComponent(segment))
-    .join(path.sep);
-  const absolutePath = path.resolve(filesRoot, decodedPath);
-
-  return isSafeChildPath(filesRoot, absolutePath) ? absolutePath : null;
-}
-
-export async function readArtifactFile(filesRoot: string, relativePath: string): Promise<ResolvedFile | null> {
-  const absolutePath = resolveArtifactAbsolutePath(filesRoot, relativePath);
-  if (!absolutePath) {
-    return null;
-  }
-
-  try {
-    await access(absolutePath);
-    return {
-      absolutePath,
-      content: await readFile(absolutePath),
-      contentType: getContentType(absolutePath),
-    };
-  } catch {
-    return null;
-  }
-}
-
 export async function readViewerStaticFile(staticRoot: string, requestPath: string): Promise<ResolvedFile | null> {
   const normalizedPath = requestPath === "/" ? "/index.html" : requestPath;
   const absolutePath = path.resolve(staticRoot, `.${normalizedPath}`);

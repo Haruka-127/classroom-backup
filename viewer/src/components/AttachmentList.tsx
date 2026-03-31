@@ -35,7 +35,7 @@ export function AttachmentList({ attachments }: AttachmentListProps) {
                 attachment.driveFile.artifacts.map((artifact) =>
                   artifact.url ? (
                     <a
-                      key={`${artifact.artifactKind}-${artifact.relativePath}`}
+                      key={`${artifact.artifactKind}-${artifact.artifactId}`}
                       href={artifact.url}
                       target={artifact.openInNewTab ? "_blank" : undefined}
                       rel={artifact.openInNewTab ? "noreferrer" : undefined}
@@ -43,7 +43,7 @@ export function AttachmentList({ attachments }: AttachmentListProps) {
                       {artifact.label}
                     </a>
                   ) : (
-                    <span className="muted" key={`${artifact.artifactKind}-${artifact.relativePath}`}>
+                    <span className="muted" key={`${artifact.artifactKind}-${artifact.artifactId}`}>
                       {artifact.label} ({artifact.status})
                     </span>
                   ),

@@ -22,7 +22,7 @@ export class TopicsRepository extends BaseRepository {
           topicId: topic.topicId,
           name: topic.name ?? null,
           updateTime: topic.updateTime ?? null,
-          rawJson: this.stringify(topic),
+          rawJson: this.stringifyRaw(topic),
         });
       }
     });

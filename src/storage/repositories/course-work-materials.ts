@@ -26,7 +26,7 @@ export class CourseWorkMaterialsRepository extends BaseRepository {
           alternateLink: record.alternateLink ?? null,
           topicId: record.topicId ?? null,
           updateTime: record.updateTime ?? null,
-          rawJson: this.stringify(record),
+          rawJson: this.stringifyRaw(record),
         });
       }
     });

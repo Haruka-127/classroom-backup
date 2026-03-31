@@ -2,7 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { resolveAppPaths } from "../../src/config/app-paths.js";
 import { runFullSync } from "../../src/sync/full-sync.js";
@@ -71,11 +71,19 @@ describe("runIncrementalSync", () => {
       },
     ];
 
+    const logger = { log: vi.fn() };
+
     await runFullSync({ out: outDir, services: { classroom: new ClassroomFixtureService(bundles), drive: new DriveFixtureService() } });
-    const result = await runIncrementalSync({ out: outDir, services: { classroom: new ClassroomFixtureService(bundles), drive: new DriveFixtureService() } });
+    const result = await runIncrementalSync({
+      out: outDir,
+      services: { classroom: new ClassroomFixtureService(bundles), drive: new DriveFixtureService() },
+      logger,
+    });
 
     expect(result.status).toBe("success");
     const manifest = JSON.parse(await readFile(paths.manifestPath, "utf8")) as { artifacts: unknown[] };
     expect(manifest.artifacts.length).toBeGreaterThan(0);
+    expect(logger.log).toHaveBeenCalledWith("Starting incremental sync");
+    expect(logger.log).toHaveBeenCalledWith("Re-fetched 1 changed Drive files since last committed checkpoint.");
   });
 });

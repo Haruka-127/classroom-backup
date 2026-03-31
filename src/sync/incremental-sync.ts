@@ -22,11 +22,13 @@ export interface IncrementalSyncOptions {
     classroom?: ClassroomService;
     drive?: DriveService;
   };
+  logger?: Pick<typeof console, "log">;
   now?: () => string;
 }
 
 export async function runIncrementalSync(options: IncrementalSyncOptions) {
   const now = options.now ?? (() => new Date().toISOString());
+  const logger = options.logger;
   const paths = resolveAppPaths(options.out);
   await ensureAppDirectories(paths);
   const db = openDatabase(paths.databasePath);
@@ -49,6 +51,8 @@ export async function runIncrementalSync(options: IncrementalSyncOptions) {
     const classroom = options.services?.classroom ?? new GoogleClassroomService(authClient);
     const drive = options.services?.drive ?? new GoogleDriveService(authClient);
 
+    logger?.log("Starting incremental sync");
+
     const existingCourseIds = new Set(repositories.courses.listIds());
     const bundles = await classroom.fetchCourseBundles();
     const visibleCourseIds = new Set(bundles.map((bundle) => bundle.course.id));
@@ -62,12 +66,14 @@ export async function runIncrementalSync(options: IncrementalSyncOptions) {
     const result = await runFullSync({
       out: options.out,
       services: { classroom, drive },
+      logger,
       now,
     });
 
     const changedFileIds = checkpoint?.committedStartPageToken
       ? await drive.listChanges(checkpoint.committedStartPageToken).then((changes) => changes.filter((change) => !change.removed).map((change) => change.fileId))
       : [];
+    logger?.log(`Re-fetched ${changedFileIds.length} changed Drive files since last committed checkpoint.`);
 
     const report = buildStatusReport(result.runId, [
       ...result.statusRecords,
@@ -86,7 +92,7 @@ export async function runIncrementalSync(options: IncrementalSyncOptions) {
       runId: result.runId,
       artifacts: result.artifacts,
       pendingMaterializationCount: result.pendingMaterializationCount,
-      failuresCount: report.counts.failed ?? 0,
+      failuresCount: result.failuresCount,
     });
 
     const pendingRun = repositories.syncRuns.findPendingRun(accountKey, "incremental");

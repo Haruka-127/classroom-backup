@@ -2,7 +2,7 @@ import { mkdir, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { resolveAppPaths } from "../../src/config/app-paths.js";
 import type { CourseBundle } from "../../src/lib/google/classroom-client.js";
@@ -91,6 +91,16 @@ class FakeDriveService implements DriveService {
   }
 }
 
+class PartiallyFailingDriveService extends FakeDriveService {
+  override async getFile(fileId: string) {
+    if (fileId === "drive-missing") {
+      throw new Error("Drive API returned 404");
+    }
+
+    return super.getFile(fileId);
+  }
+}
+
 describe("runFullSync", () => {
   it("writes manifest and status report for a full sync", async () => {
     const outDir = path.join(os.tmpdir(), `classroom-backup-sync-${Date.now()}`);
@@ -146,5 +156,75 @@ describe("runFullSync", () => {
 
     const statusReport = JSON.parse(await readFile(paths.statusReportPath, "utf8")) as { counts: Record<string, number> };
     expect(statusReport.counts.success).toBeGreaterThan(0);
+  });
+
+  it("records file fetch failures and continues with remaining files", async () => {
+    const outDir = path.join(os.tmpdir(), `classroom-backup-sync-partial-${Date.now()}`);
+    const paths = resolveAppPaths(outDir);
+    await mkdir(paths.configRoot, { recursive: true });
+    await mkdir(outDir, { recursive: true });
+    await mkdir(path.dirname(paths.oauthClientPath), { recursive: true });
+    await import("node:fs/promises").then(({ writeFile }) =>
+      writeFile(
+        paths.oauthClientPath,
+        JSON.stringify({ clientId: "test-client", clientSecret: "secret", redirectUris: ["http://127.0.0.1"] }),
+      ),
+    );
+
+    const logger = { log: vi.fn() };
+    const classroom = new FakeClassroomService([
+      {
+        course: { id: "course-1", name: "Math", courseState: "ACTIVE" },
+        topics: [],
+        announcements: [],
+        courseWork: [
+          {
+            courseId: "course-1",
+            courseWorkId: "cw-1",
+            title: "Assignment",
+            materials: [
+              {
+                driveFile: {
+                  driveFile: { id: "drive-missing", alternateLink: "https://drive.google.com/file/d/drive-missing" },
+                  shareMode: "VIEW",
+                },
+              },
+              {
+                driveFile: {
+                  driveFile: { id: "drive-1", alternateLink: "https://drive.google.com/file/d/drive-1" },
+                  shareMode: "VIEW",
+                },
+              },
+            ],
+          },
+        ],
+        courseWorkMaterials: [],
+        studentSubmissions: [],
+      },
+    ]);
+
+    const result = await runFullSync({
+      out: outDir,
+      services: { classroom, drive: new PartiallyFailingDriveService() },
+      logger,
+      now: () => "2026-03-31T00:00:00.000Z",
+    });
+
+    expect(result.status).toBe("partial");
+    expect(result.artifacts).toHaveLength(1);
+    expect(result.failuresCount).toBeGreaterThan(0);
+
+    const manifest = JSON.parse(await readFile(paths.manifestPath, "utf8")) as {
+      artifacts: Array<{ driveFileId: string }>;
+      failuresCount: number;
+    };
+    expect(manifest.artifacts).toHaveLength(1);
+    expect(manifest.artifacts[0]?.driveFileId).toBe("drive-1");
+    expect(manifest.failuresCount).toBeGreaterThan(0);
+
+    const statusReport = JSON.parse(await readFile(paths.statusReportPath, "utf8")) as { counts: Record<string, number> };
+    expect(statusReport.counts.failed).toBeGreaterThan(0);
+    expect(logger.log).toHaveBeenCalledWith("Fetching 2 Drive files...");
+    expect(logger.log).toHaveBeenCalledWith("[1/2] Failed to fetch Drive file drive-missing; continuing.");
   });
 });

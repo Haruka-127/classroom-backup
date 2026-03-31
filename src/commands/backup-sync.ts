@@ -5,7 +5,7 @@ export interface BackupSyncCommandOptions {
 }
 
 export async function runBackupSyncCommand(options: BackupSyncCommandOptions): Promise<void> {
-  const result = await runIncrementalSync({ out: options.out });
+  const result = await runIncrementalSync({ out: options.out, logger: console });
   console.log(`Incremental sync completed with status: ${result.status}`);
   console.log(`Run ID: ${result.runId}`);
   console.log(`Artifacts recorded: ${result.artifacts.length}`);

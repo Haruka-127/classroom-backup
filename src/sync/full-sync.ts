@@ -11,7 +11,7 @@ import {
   resolveCourseMaterialDriveReferences,
   resolveSubmissionDriveReferences,
 } from "../domain/material-resolver.js";
-import type { ManifestArtifactEntry, StatusRecord } from "../domain/classroom-types.js";
+import type { DriveFileRecord, ManifestArtifactEntry, StatusRecord, SyncFailureRecord } from "../domain/classroom-types.js";
 import type { ClassroomService } from "../lib/google/classroom-client.js";
 import { GoogleClassroomService } from "../lib/google/classroom-client.js";
 import type { DriveService } from "../lib/google/drive-client.js";
@@ -30,6 +30,7 @@ export interface FullSyncOptions {
     classroom?: ClassroomService;
     drive?: DriveService;
   };
+  logger?: Pick<typeof console, "log">;
   now?: () => string;
 }
 
@@ -39,14 +40,20 @@ export interface FullSyncResult {
   artifacts: ManifestArtifactEntry[];
   statusRecords: StatusRecord[];
   pendingMaterializationCount: number;
+  failuresCount: number;
 }
 
 function sanitizePathSegment(value: string): string {
   return value.replace(/[^a-zA-Z0-9._-]+/g, "-");
 }
 
+function describeError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export async function runFullSync(options: FullSyncOptions): Promise<FullSyncResult> {
   const now = options.now ?? (() => new Date().toISOString());
+  const logger = options.logger;
   const paths = resolveAppPaths(options.out);
   await ensureAppDirectories(paths);
 
@@ -99,10 +106,18 @@ export async function runFullSync(options: FullSyncOptions): Promise<FullSyncRes
       driveStartPageTokenCandidate: startPageToken,
     });
 
+    logger?.log(`Starting full sync ${runId}`);
+    logger?.log("Fetching Classroom data...");
+
     const courseBundles = await classroom.fetchCourseBundles();
     await jsonStore.write(path.join("runs", runId, "courses.json"), courseBundles);
+    logger?.log(`Fetched ${courseBundles.length} courses.`);
 
     const statusRecords: StatusRecord[] = [];
+    const recordFailure = (failure: Omit<SyncFailureRecord, "runId">, status: Omit<StatusRecord, "runId">) => {
+      repositories.failures.insert({ runId, ...failure });
+      statusRecords.push({ runId, ...status });
+    };
 
     for (const bundle of courseBundles) {
       repositories.courses.upsert(bundle.course, runId, "visible");
@@ -178,32 +193,120 @@ export async function runFullSync(options: FullSyncOptions): Promise<FullSyncRes
 
     const artifacts: ManifestArtifactEntry[] = [];
     const driveFileIds = repositories.driveFileRefs.listReadyDriveFileIds();
-    for (const driveFileId of driveFileIds) {
-      const file = await drive.getFile(driveFileId);
+    logger?.log(`Fetching ${driveFileIds.length} Drive files...`);
+    for (const [index, driveFileId] of driveFileIds.entries()) {
+      logger?.log(`[${index + 1}/${driveFileIds.length}] Fetching Drive file ${driveFileId}`);
+
+      let fileHadFailures = false;
+      let file: DriveFileRecord;
+      try {
+        file = await drive.getFile(driveFileId);
+      } catch (error) {
+        const message = describeError(error);
+        recordFailure(
+          {
+            scope: "drive",
+            entityType: "drive_file",
+            entityId: driveFileId,
+            status: "failed",
+            reasonCode: "drive_file_fetch_failed",
+            message,
+          },
+          {
+            scope: "drive",
+            entityType: "drive_file",
+            entityId: driveFileId,
+            status: "failed",
+            message: `Failed to fetch Drive file ${driveFileId}: ${message}`,
+          },
+        );
+        logger?.log(`[${index + 1}/${driveFileIds.length}] Failed to fetch Drive file ${driveFileId}; continuing.`);
+        continue;
+      }
+
       repositories.driveFiles.upsert(file);
       await jsonStore.write(path.join("runs", runId, "drive", `${sanitizePathSegment(driveFileId)}.json`), file);
 
-      const comments = await drive.listComments(driveFileId);
-      repositories.driveComments.replaceForFile(driveFileId, comments);
-      await jsonStore.write(path.join("runs", runId, "drive-comments", `${sanitizePathSegment(driveFileId)}.comments.json`), comments);
+      try {
+        const comments = await drive.listComments(driveFileId);
+        repositories.driveComments.replaceForFile(driveFileId, comments);
+        await jsonStore.write(path.join("runs", runId, "drive-comments", `${sanitizePathSegment(driveFileId)}.comments.json`), comments);
+      } catch (error) {
+        const message = describeError(error);
+        fileHadFailures = true;
+        recordFailure(
+          {
+            scope: "drive",
+            entityType: "drive_comments",
+            entityId: driveFileId,
+            status: "failed",
+            reasonCode: "drive_comments_fetch_failed",
+            message,
+          },
+          {
+            scope: "drive",
+            entityType: "drive_comments",
+            entityId: driveFileId,
+            status: "failed",
+            message: `Failed to fetch Drive comments for ${driveFileId}: ${message}`,
+          },
+        );
+        logger?.log(`[${index + 1}/${driveFileIds.length}] Failed to fetch comments for ${driveFileId}; continuing.`);
+      }
 
       if (file.mimeType && !isGoogleWorkspaceMimeType(file.mimeType)) {
-        const blob = await drive.downloadBlob(driveFileId);
-        const extension = path.extname(file.name ?? "") || ".bin";
-        const saved = await fileStore.saveBuffer(path.join(driveFileId, `blob${extension}`), blob, file.md5Checksum ? "md5" : "sha256");
-        const entry: ManifestArtifactEntry = {
-          driveFileId,
-          artifactKind: "blob",
-          outputMimeType: file.mimeType,
-          relativePath: saved.relativePath,
-          status: "saved",
-          sizeBytes: saved.sizeBytes,
-          checksumType: file.md5Checksum ? "md5" : saved.checksumType,
-          checksumValue: file.md5Checksum ?? saved.checksumValue,
-          sourceModifiedTime: file.modifiedTime ?? null,
-        };
-        repositories.driveFileArtifacts.upsert(entry);
-        artifacts.push(entry);
+        try {
+          const blob = await drive.downloadBlob(driveFileId);
+          const extension = path.extname(file.name ?? "") || ".bin";
+          const saved = await fileStore.saveBuffer(path.join(driveFileId, `blob${extension}`), blob, file.md5Checksum ? "md5" : "sha256");
+          const entry: ManifestArtifactEntry = {
+            driveFileId,
+            artifactKind: "blob",
+            outputMimeType: file.mimeType,
+            relativePath: saved.relativePath,
+            status: "saved",
+            sizeBytes: saved.sizeBytes,
+            checksumType: file.md5Checksum ? "md5" : saved.checksumType,
+            checksumValue: file.md5Checksum ?? saved.checksumValue,
+            sourceModifiedTime: file.modifiedTime ?? null,
+          };
+          repositories.driveFileArtifacts.upsert(entry);
+          artifacts.push(entry);
+        } catch (error) {
+          const message = describeError(error);
+          fileHadFailures = true;
+          recordFailure(
+            {
+              scope: "drive",
+              entityType: "blob",
+              entityId: driveFileId,
+              status: "failed",
+              reasonCode: "blob_download_failed",
+              message,
+            },
+            {
+              scope: "drive",
+              entityType: "blob",
+              entityId: driveFileId,
+              status: "failed",
+              message: `Failed to download blob for ${driveFileId}: ${message}`,
+            },
+          );
+          const fallbackEntry: ManifestArtifactEntry = {
+            driveFileId,
+            artifactKind: "blob",
+            outputMimeType: file.mimeType,
+            relativePath: path.join(driveFileId, "blob.unavailable"),
+            status: "failed",
+            sizeBytes: null,
+            checksumType: null,
+            checksumValue: null,
+            sourceModifiedTime: file.modifiedTime ?? null,
+          };
+          repositories.driveFileArtifacts.upsert(fallbackEntry);
+          artifacts.push(fallbackEntry);
+          logger?.log(`[${index + 1}/${driveFileIds.length}] Failed to download blob for ${driveFileId}; continuing.`);
+        }
       }
 
       if (isGoogleWorkspaceMimeType(file.mimeType)) {
@@ -228,15 +331,26 @@ export async function runFullSync(options: FullSyncOptions): Promise<FullSyncRes
             artifacts.push(entry);
             savedAny = true;
           } catch (error) {
-            repositories.failures.insert({
-              runId,
-              scope: "drive",
-              entityType: "export",
-              entityId: `${driveFileId}:${target.mimeType}`,
-              status: "failed",
-              reasonCode: "export_failed",
-              message: String(error),
-            });
+            const message = describeError(error);
+            fileHadFailures = true;
+            recordFailure(
+              {
+                scope: "drive",
+                entityType: "export",
+                entityId: `${driveFileId}:${target.mimeType}`,
+                status: "failed",
+                reasonCode: "export_failed",
+                message,
+              },
+              {
+                scope: "drive",
+                entityType: "export",
+                entityId: `${driveFileId}:${target.mimeType}`,
+                status: "failed",
+                message: `Failed to export ${driveFileId} as ${target.mimeType}: ${message}`,
+              },
+            );
+            logger?.log(`[${index + 1}/${driveFileIds.length}] Failed to export ${driveFileId} as ${target.mimeType}; continuing.`);
           }
         }
 
@@ -262,8 +376,8 @@ export async function runFullSync(options: FullSyncOptions): Promise<FullSyncRes
         scope: "drive",
         entityType: "drive_file",
         entityId: driveFileId,
-        status: "success",
-        message: `Backed up Drive file ${driveFileId}`,
+        status: fileHadFailures ? "partial" : "success",
+        message: fileHadFailures ? `Backed up Drive file ${driveFileId} with some failures` : `Backed up Drive file ${driveFileId}`,
       });
     }
 
@@ -301,7 +415,9 @@ export async function runFullSync(options: FullSyncOptions): Promise<FullSyncRes
 
     commitPendingCheckpoint(repositories, accountKey, runId, now());
 
-    const finalStatus = repositories.failures.listByRun(runId).some((failure) => failure.status === "failed") ? "partial" : "success";
+    const failures = repositories.failures.listByRun(runId);
+    const failuresCount = failures.length;
+    const finalStatus = failures.some((failure) => failure.status === "failed") ? "partial" : "success";
     repositories.syncRuns.upsert({
       runId,
       accountKey,
@@ -320,6 +436,7 @@ export async function runFullSync(options: FullSyncOptions): Promise<FullSyncRes
       artifacts,
       statusRecords,
       pendingMaterializationCount,
+      failuresCount,
     };
   } catch (error) {
     const run = repositories.syncRuns.get(runId);

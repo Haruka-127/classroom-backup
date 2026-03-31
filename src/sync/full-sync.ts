@@ -128,6 +128,9 @@ export async function runFullSync(options: FullSyncOptions): Promise<FullSyncRes
       repositories.studentSubmissions.replaceForCourse(bundle.course.id, bundle.studentSubmissions);
 
       const courseMaterialRefs = [
+        ...bundle.announcements.flatMap((item) =>
+          resolveCourseMaterialDriveReferences({ courseId: bundle.course.id, materials: item.materials ?? null }),
+        ),
         ...bundle.courseWork.flatMap((item) =>
           resolveCourseMaterialDriveReferences({ courseId: bundle.course.id, courseWorkId: item.courseWorkId, materials: item.materials ?? null }),
         ),

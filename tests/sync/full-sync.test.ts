@@ -158,6 +158,60 @@ describe("runFullSync", () => {
     expect(statusReport.counts.success).toBeGreaterThan(0);
   });
 
+  it("backs up Drive files attached to announcements", async () => {
+    const outDir = path.join(os.tmpdir(), `classroom-backup-sync-announcements-${Date.now()}`);
+    const paths = resolveAppPaths(outDir);
+    await mkdir(paths.configRoot, { recursive: true });
+    await mkdir(outDir, { recursive: true });
+    await mkdir(path.dirname(paths.oauthClientPath), { recursive: true });
+    await import("node:fs/promises").then(({ writeFile }) =>
+      writeFile(
+        paths.oauthClientPath,
+        JSON.stringify({ clientId: "test-client", clientSecret: "secret", redirectUris: ["http://127.0.0.1"] }),
+      ),
+    );
+
+    const classroom = new FakeClassroomService([
+      {
+        course: { id: "course-1", name: "Math", courseState: "ACTIVE" },
+        topics: [],
+        announcements: [
+          {
+            courseId: "course-1",
+            announcementId: "ann-1",
+            text: "See attached",
+            materials: [
+              {
+                driveFile: {
+                  driveFile: { id: "drive-ann-1", alternateLink: "https://drive.google.com/file/d/drive-ann-1" },
+                  shareMode: "VIEW",
+                },
+              },
+            ],
+          },
+        ],
+        courseWork: [],
+        courseWorkMaterials: [],
+        studentSubmissions: [],
+      },
+    ]);
+
+    const result = await runFullSync({
+      out: outDir,
+      services: { classroom, drive: new FakeDriveService() },
+      now: () => "2026-03-31T00:00:00.000Z",
+    });
+
+    expect(result.status).toBe("success");
+
+    const manifest = JSON.parse(await readFile(paths.manifestPath, "utf8")) as {
+      artifacts: Array<{ driveFileId: string; relativePath: string }>;
+    };
+    expect(manifest.artifacts).toHaveLength(1);
+    expect(manifest.artifacts[0]?.driveFileId).toBe("drive-ann-1");
+    expect(manifest.artifacts[0]?.relativePath).toContain("drive-ann-1");
+  });
+
   it("records file fetch failures and continues with remaining files", async () => {
     const outDir = path.join(os.tmpdir(), `classroom-backup-sync-partial-${Date.now()}`);
     const paths = resolveAppPaths(outDir);

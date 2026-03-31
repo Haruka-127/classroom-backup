@@ -2,6 +2,7 @@ import type {
   ViewerClassworkResponse,
   ViewerCourseDetail,
   ViewerCourseListResponse,
+  ViewerCoursePeopleResponse,
   ViewerCourseWorkDetail,
   ViewerCourseWorkMaterialDetail,
   ViewerDriveFile,
@@ -35,6 +36,7 @@ export const viewerApi = {
   getCourse: (courseId: string) => request<ViewerCourseDetail>(`/api/courses/${encodeURIComponent(courseId)}`),
   getStream: (courseId: string) => request<ViewerStreamResponse>(`/api/courses/${encodeURIComponent(courseId)}/stream`),
   getClasswork: (courseId: string) => request<ViewerClassworkResponse>(`/api/courses/${encodeURIComponent(courseId)}/classwork`),
+  getPeople: (courseId: string) => request<ViewerCoursePeopleResponse>(`/api/courses/${encodeURIComponent(courseId)}/people`),
   getCourseWork: (courseId: string, courseWorkId: string) =>
     request<ViewerCourseWorkDetail>(`/api/courses/${encodeURIComponent(courseId)}/course-work/${encodeURIComponent(courseWorkId)}`),
   getCourseWorkMaterial: (courseId: string, courseWorkMaterialId: string) =>

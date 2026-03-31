@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { viewerApi } from "../../lib/api";
+import { formatCourseStateLabel } from "../../lib/labels";
 import type { ViewerCourseCard } from "../../lib/types";
 
 export function CoursesPage() {
@@ -50,6 +51,7 @@ export function CoursesPage() {
             <div className="course-card-body">
               <p>{course.section || "クラス"}</p>
               <p className="muted">{course.room || "教室情報なし"}</p>
+              {course.courseState ? <p className="muted">{formatCourseStateLabel(course.courseState)}</p> : null}
               <p className="muted">{course.updateTime ? new Date(course.updateTime).toLocaleString() : "更新時刻なし"}</p>
             </div>
           </Link>

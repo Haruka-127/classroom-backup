@@ -5,11 +5,24 @@ import type {
   ViewerClassworkResponse,
   ViewerCourseCard,
   ViewerCourseDetail,
+  ViewerCoursePeopleResponse,
   ViewerCourseListResponse,
   ViewerCourseWorkDetail,
   ViewerCourseWorkMaterialDetail,
+  ViewerDriveComment,
+  ViewerDriveCommentReply,
   ViewerDriveFile,
+  ViewerGradingPeriod,
+  ViewerGuardian,
+  ViewerGuardianInvitation,
+  ViewerInvitation,
+  ViewerPerson,
+  ViewerRubric,
+  ViewerRubricCriterion,
+  ViewerRubricLevel,
   ViewerStateNotice,
+  ViewerStudentGroup,
+  ViewerSubmissionHistoryEntry,
   ViewerStreamItem,
   ViewerStreamResponse,
   ViewerSubmissionSummary,
@@ -111,6 +124,65 @@ interface DriveArtifactRow {
   sizeBytes: number | null;
 }
 
+interface UserProfileRow {
+  userId: string;
+  fullName: string | null;
+  email: string | null;
+  photoUrl: string | null;
+}
+
+interface PersonRow extends UserProfileRow {
+  profileName: string | null;
+  profilePhotoUrl: string | null;
+}
+
+interface InvitationRow {
+  invitationId: string;
+  userId: string | null;
+  role: string | null;
+  name: string | null;
+  email: string | null;
+}
+
+interface StudentGroupRow {
+  studentGroupId: string;
+  title: string | null;
+}
+
+interface StudentGroupMemberRow {
+  studentGroupId: string;
+  userId: string;
+  fullName: string | null;
+  email: string | null;
+  photoUrl: string | null;
+  profileName: string | null;
+  profilePhotoUrl: string | null;
+}
+
+interface GuardianRow {
+  guardianId: string;
+  guardianName: string | null;
+  invitedEmailAddress: string | null;
+}
+
+interface GuardianInvitationRow {
+  invitationId: string;
+  invitedEmailAddress: string | null;
+  state: string | null;
+}
+
+interface DriveCommentRow {
+  commentId: string;
+  content: string | null;
+  authorDisplayName: string | null;
+  createdTime: string | null;
+  modifiedTime: string | null;
+  resolved: number | null;
+  deleted: number | null;
+  quotedFileContentValue: string | null;
+  repliesJson: string;
+}
+
 const DEFAULT_NO_TOPIC_LABEL = "トピックなし";
 
 function parseJson(rawJson: string | null): RawJsonRecord {
@@ -138,6 +210,10 @@ function asNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+function asBoolean(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
+}
+
 function getRecord(value: unknown): RawJsonRecord {
   return typeof value === "object" && value !== null ? (value as RawJsonRecord) : {};
 }
@@ -152,6 +228,18 @@ function compareByTimeDesc(left: string | null, right: string | null): number {
   const leftValue = left ? Date.parse(left) : 0;
   const rightValue = right ? Date.parse(right) : 0;
   return rightValue - leftValue;
+}
+
+function formatStructuredDate(rawJson: RawJsonRecord): string | null {
+  const year = asNumber(rawJson.year);
+  const month = asNumber(rawJson.month);
+  const day = asNumber(rawJson.day);
+
+  if (year === null || month === null || day === null) {
+    return null;
+  }
+
+  return new Date(year, month - 1, day).toLocaleDateString();
 }
 
 function formatDueLabel(rawJson: RawJsonRecord): string | null {
@@ -254,10 +342,17 @@ function canOpenInline(mimeType: string | null): boolean {
 
 export class ViewerReadModel {
   private readonly hasAnnouncementIdColumn: boolean;
+  private readonly availableTables: Set<string>;
 
   constructor(private readonly db: Database.Database) {
+    const tables = this.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>;
+    this.availableTables = new Set(tables.map((table) => table.name));
     const driveFileRefsColumns = this.db.prepare("PRAGMA table_info(drive_file_refs)").all() as Array<{ name: string }>;
     this.hasAnnouncementIdColumn = driveFileRefsColumns.some((column) => column.name === "announcement_id");
+  }
+
+  private hasTable(tableName: string): boolean {
+    return this.availableTables.has(tableName);
   }
 
   private getDriveFileRefAnnouncementSelect(): string {
@@ -323,6 +418,307 @@ export class ViewerReadModel {
     };
   }
 
+  private mapPerson(row: PersonRow | StudentGroupMemberRow): ViewerPerson {
+    return {
+      userId: row.userId,
+      name: row.fullName ?? row.profileName ?? row.userId,
+      email: row.email,
+      photoUrl: row.photoUrl ?? row.profilePhotoUrl,
+    };
+  }
+
+  private getUserDisplayName(userId: string | null): string | null {
+    if (!userId || !this.hasTable("user_profiles")) {
+      return userId;
+    }
+
+    const row = this.db
+      .prepare(`SELECT user_id AS userId, full_name AS fullName, email, photo_url AS photoUrl FROM user_profiles WHERE user_id = ?`)
+      .get(userId) as UserProfileRow | undefined;
+
+    return row?.fullName ?? row?.email ?? userId;
+  }
+
+  private getCourseAliases(courseId: string): string[] {
+    if (!this.hasTable("course_aliases")) {
+      return [];
+    }
+
+    return (this.db.prepare(`SELECT alias FROM course_aliases WHERE course_id = ? ORDER BY alias ASC`).all(courseId) as Array<{ alias: string }>).map(
+      (row) => row.alias,
+    );
+  }
+
+  private getGradingPeriods(courseId: string): ViewerGradingPeriod[] {
+    if (!this.hasTable("course_grading_period_settings")) {
+      return [];
+    }
+
+    const row = this.db
+      .prepare(`SELECT raw_json AS rawJson FROM course_grading_period_settings WHERE course_id = ?`)
+      .get(courseId) as { rawJson: string } | undefined;
+
+    if (!row) {
+      return [];
+    }
+
+    return asArray(parseJson(row.rawJson).gradingPeriods)
+      .map((item) => {
+        const record = getRecord(item);
+        const title = asString(record.title) ?? asString(record.displayName) ?? "学期";
+        return {
+          title,
+          startDate: formatStructuredDate(getRecord(record.startDate)),
+          endDate: formatStructuredDate(getRecord(record.endDate)),
+        };
+      })
+      .filter((item) => item.title || item.startDate || item.endDate);
+  }
+
+  getCoursePeople(courseId: string): ViewerCoursePeopleResponse | null {
+    if (!this.getCourse(courseId)) {
+      return null;
+    }
+
+    const teachers = this.hasTable("teachers")
+      ? (this.db
+          .prepare(
+            `SELECT t.user_id AS userId, up.full_name AS fullName, up.email, up.photo_url AS photoUrl,
+                    t.profile_name AS profileName, t.profile_photo_url AS profilePhotoUrl
+             FROM teachers t
+             LEFT JOIN user_profiles up ON up.user_id = t.user_id
+             WHERE t.course_id = ?
+             ORDER BY COALESCE(up.full_name, t.profile_name, t.user_id) COLLATE NOCASE ASC, t.user_id ASC`,
+          )
+          .all(courseId) as PersonRow[])
+      : [];
+
+    const students = this.hasTable("students")
+      ? (this.db
+          .prepare(
+            `SELECT s.user_id AS userId, up.full_name AS fullName, up.email, up.photo_url AS photoUrl,
+                    s.profile_name AS profileName, s.profile_photo_url AS profilePhotoUrl
+             FROM students s
+             LEFT JOIN user_profiles up ON up.user_id = s.user_id
+             WHERE s.course_id = ?
+             ORDER BY COALESCE(up.full_name, s.profile_name, s.user_id) COLLATE NOCASE ASC, s.user_id ASC`,
+          )
+          .all(courseId) as PersonRow[])
+      : [];
+
+    const invitations = this.hasTable("invitations")
+      ? (this.db
+          .prepare(
+            `SELECT i.invitation_id AS invitationId, i.user_id AS userId, i.role,
+                    up.full_name AS name, up.email AS email
+             FROM invitations i
+             LEFT JOIN user_profiles up ON up.user_id = i.user_id
+             WHERE i.course_id = ?
+             ORDER BY COALESCE(up.full_name, i.user_id, i.invitation_id) COLLATE NOCASE ASC, i.invitation_id ASC`,
+          )
+          .all(courseId) as InvitationRow[])
+      : [];
+
+    const groups = this.hasTable("student_groups")
+      ? (this.db
+          .prepare(`SELECT student_group_id AS studentGroupId, title FROM student_groups WHERE course_id = ? ORDER BY COALESCE(title, student_group_id) COLLATE NOCASE ASC`)
+          .all(courseId) as StudentGroupRow[])
+      : [];
+
+    const groupMembers = this.hasTable("student_group_members")
+      ? (this.db
+          .prepare(
+            `SELECT gm.student_group_id AS studentGroupId, gm.user_id AS userId, up.full_name AS fullName,
+                    up.email, up.photo_url AS photoUrl, s.profile_name AS profileName, s.profile_photo_url AS profilePhotoUrl
+             FROM student_group_members gm
+             LEFT JOIN user_profiles up ON up.user_id = gm.user_id
+             LEFT JOIN students s ON s.course_id = gm.course_id AND s.user_id = gm.user_id
+             WHERE gm.course_id = ?
+             ORDER BY gm.student_group_id ASC, COALESCE(up.full_name, s.profile_name, gm.user_id) COLLATE NOCASE ASC`,
+          )
+          .all(courseId) as StudentGroupMemberRow[])
+      : [];
+
+    const guardians = this.hasTable("guardians")
+      ? (this.db
+          .prepare(`SELECT guardian_id AS guardianId, guardian_name AS guardianName, invited_email_address AS invitedEmailAddress FROM guardians ORDER BY COALESCE(guardian_name, guardian_id) COLLATE NOCASE ASC`)
+          .all() as GuardianRow[])
+      : [];
+
+    const guardianInvitations = this.hasTable("guardian_invitations")
+      ? (this.db
+          .prepare(
+            `SELECT invitation_id AS invitationId, invited_email_address AS invitedEmailAddress, state
+             FROM guardian_invitations
+             ORDER BY invitation_id ASC`,
+          )
+          .all() as GuardianInvitationRow[])
+      : [];
+
+    const membersByGroupId = new Map<string, ViewerPerson[]>();
+    for (const member of groupMembers) {
+      const list = membersByGroupId.get(member.studentGroupId) ?? [];
+      list.push(this.mapPerson(member));
+      membersByGroupId.set(member.studentGroupId, list);
+    }
+
+    return {
+      courseId,
+      teachers: teachers.map((row) => this.mapPerson(row)),
+      students: students.map((row) => this.mapPerson(row)),
+      invitations: invitations.map((row): ViewerInvitation => ({
+        invitationId: row.invitationId,
+        userId: row.userId,
+        name: row.name ?? row.userId ?? row.invitationId,
+        email: row.email,
+        role: row.role,
+      })),
+      studentGroups: groups.map(
+        (group): ViewerStudentGroup => ({
+          studentGroupId: group.studentGroupId,
+          title: group.title ?? group.studentGroupId,
+          members: membersByGroupId.get(group.studentGroupId) ?? [],
+        }),
+      ),
+      guardians: guardians.map(
+        (guardian): ViewerGuardian => ({
+          guardianId: guardian.guardianId,
+          guardianName: guardian.guardianName ?? guardian.guardianId,
+          invitedEmailAddress: guardian.invitedEmailAddress,
+        }),
+      ),
+      guardianInvitations: guardianInvitations.map(
+        (invitation): ViewerGuardianInvitation => ({
+          invitationId: invitation.invitationId,
+          invitedEmailAddress: invitation.invitedEmailAddress,
+          state: invitation.state,
+        }),
+      ),
+    };
+  }
+
+  private getRubrics(courseId: string, courseWorkId: string): ViewerRubric[] {
+    if (!this.hasTable("rubrics")) {
+      return [];
+    }
+
+    const rows = this.db
+      .prepare(`SELECT rubric_id AS rubricId, title, raw_json AS rawJson FROM rubrics WHERE course_id = ? AND course_work_id = ? ORDER BY rubric_id ASC`)
+      .all(courseId, courseWorkId) as Array<{ rubricId: string; title: string | null; rawJson: string }>;
+
+    return rows.map((row) => {
+      const rawJson = parseJson(row.rawJson);
+      const criteria = asArray(rawJson.criteria).map((item, criterionIndex): ViewerRubricCriterion => {
+        const criterion = getRecord(item);
+        const levels = asArray(criterion.levels).map((level, levelIndex): ViewerRubricLevel => {
+          const record = getRecord(level);
+          return {
+            levelId: asString(record.id) ?? `${row.rubricId}-level-${criterionIndex}-${levelIndex}`,
+            title: asString(record.title) ?? asString(record.description) ?? `Level ${levelIndex + 1}`,
+            description: asString(record.description),
+            points: asNumber(record.points),
+          };
+        });
+
+        return {
+          criterionId: asString(criterion.id) ?? `${row.rubricId}-criterion-${criterionIndex}`,
+          title: asString(criterion.title) ?? asString(criterion.description) ?? `Criterion ${criterionIndex + 1}`,
+          description: asString(criterion.description),
+          levels,
+        };
+      });
+
+      return {
+        rubricId: row.rubricId,
+        title: row.title ?? asString(rawJson.title) ?? row.rubricId,
+        criteria,
+      };
+    });
+  }
+
+  private getSubmissionHistory(rawJson: RawJsonRecord): ViewerSubmissionHistoryEntry[] {
+    return asArray(rawJson.submissionHistory)
+      .map((item, index) => {
+        const record = getRecord(item);
+        const stateHistory = getRecord(record.stateHistory);
+        if (Object.keys(stateHistory).length > 0) {
+          const actorUserId = asString(stateHistory.actorUserId);
+          return {
+            entryId: `state-${index}`,
+            title: `状態が ${asString(stateHistory.state) ?? "更新"} に変更されました`,
+            description: null,
+            actorName: this.getUserDisplayName(actorUserId),
+            timestamp: asString(stateHistory.stateTimestamp),
+          };
+        }
+
+        const gradeHistory = getRecord(record.gradeHistory);
+        if (Object.keys(gradeHistory).length > 0) {
+          const actorUserId = asString(gradeHistory.actorUserId);
+          const details = [
+            asString(gradeHistory.gradeChangeType),
+            asNumber(gradeHistory.pointsEarned) !== null ? `得点 ${asNumber(gradeHistory.pointsEarned)}` : null,
+            asNumber(gradeHistory.maxPoints) !== null ? `満点 ${asNumber(gradeHistory.maxPoints)}` : null,
+          ].filter((value): value is string => Boolean(value));
+
+          return {
+            entryId: `grade-${index}`,
+            title: "採点が更新されました",
+            description: details.length > 0 ? details.join(" / ") : null,
+            actorName: this.getUserDisplayName(actorUserId),
+            timestamp: asString(gradeHistory.gradeTimestamp),
+          };
+        }
+
+        return {
+          entryId: `history-${index}`,
+          title: "提出履歴",
+          description: null,
+          actorName: null,
+          timestamp: null,
+        };
+      })
+      .sort((left, right) => compareByTimeDesc(left.timestamp, right.timestamp));
+  }
+
+  private getDriveComments(driveFileId: string): ViewerDriveComment[] {
+    if (!this.hasTable("drive_comments")) {
+      return [];
+    }
+
+    const rows = this.db
+      .prepare(
+        `SELECT comment_id AS commentId, content, author_display_name AS authorDisplayName, created_time AS createdTime,
+                modified_time AS modifiedTime, resolved, deleted, quoted_file_content_value AS quotedFileContentValue,
+                replies_json AS repliesJson
+         FROM drive_comments WHERE drive_file_id = ?
+         ORDER BY COALESCE(modified_time, created_time) DESC, comment_id ASC`,
+      )
+      .all(driveFileId) as DriveCommentRow[];
+
+    return rows.map((row): ViewerDriveComment => ({
+      commentId: row.commentId,
+      content: row.content,
+      authorDisplayName: row.authorDisplayName,
+      createdTime: row.createdTime,
+      modifiedTime: row.modifiedTime,
+      resolved: row.resolved === null ? null : Boolean(row.resolved),
+      deleted: row.deleted === null ? null : Boolean(row.deleted),
+      quotedFileContentValue: row.quotedFileContentValue,
+      replies: asArray(parseJson(row.repliesJson)).map((reply, index): ViewerDriveCommentReply => {
+        const record = getRecord(reply);
+        return {
+          replyId: asString(record.id) ?? `${row.commentId}-reply-${index}`,
+          authorDisplayName: asString(getRecord(record.author).displayName),
+          content: asString(record.content),
+          createdTime: asString(record.createdTime),
+          modifiedTime: asString(record.modifiedTime),
+          deleted: asBoolean(record.deleted),
+        };
+      }),
+    }));
+  }
+
   listCourses(): ViewerCourseListResponse {
     const rows = this.db
       .prepare(
@@ -364,6 +760,8 @@ export class ViewerReadModel {
       courseState: row.courseState,
       updateTime: row.updateTime,
       bannerColor: createBannerColor(row.courseId),
+      aliases: this.getCourseAliases(row.courseId),
+      gradingPeriods: this.getGradingPeriods(row.courseId),
       notices: row.visibilityStatus === "visible" ? [] : uniqueNotices([row.visibilityStatus]),
     };
   }
@@ -565,6 +963,8 @@ export class ViewerReadModel {
     const submissionAttachments = submission ? this.getAttachments(courseId, { courseWorkId, submissionId: submission.submissionId }) : [];
     const attachments = this.getAttachments(courseId, { courseWorkId });
     const topicName = row.topicId ? (this.getTopicsById(courseId).get(row.topicId) ?? DEFAULT_NO_TOPIC_LABEL) : null;
+    const rawJson = parseJson(row.rawJson);
+    const submissionRawJson = parseJson(submission?.rawJson ?? null);
 
     return {
       courseId,
@@ -577,7 +977,10 @@ export class ViewerReadModel {
       topicName,
       updateTime: row.updateTime,
       alternateLink: row.alternateLink,
+      dueLabel: formatDueLabel(rawJson),
+      pointsLabel: formatPointsLabel(rawJson),
       attachments,
+      rubrics: this.getRubrics(courseId, courseWorkId),
       submission: submission
         ? {
             submissionId: submission.submissionId,
@@ -586,10 +989,11 @@ export class ViewerReadModel {
             updateTime: submission.updateTime,
             assignedGrade: submission.assignedGrade,
             draftGrade: submission.draftGrade,
-            shortAnswer: submission.shortAnswer ?? asString(parseJson(submission.rawJson).shortAnswerSubmission),
+            shortAnswer: submission.shortAnswer ?? asString(getRecord(submissionRawJson.shortAnswerSubmission).answer),
             multipleChoiceAnswer: submission.multipleChoiceAnswer,
             alternateLink: submission.alternateLink,
             attachments: submissionAttachments,
+            history: this.getSubmissionHistory(submissionRawJson),
             notices: uniqueNotices(submissionAttachments.flatMap((attachment) => attachment.notices.map((notice) => notice.code))),
           }
         : null,
@@ -679,6 +1083,7 @@ export class ViewerReadModel {
         label: artifact.artifactKind === "blob" ? "元ファイル" : `エクスポート${artifact.outputMimeType ? ` (${artifact.outputMimeType})` : ""}`,
         openInNewTab: canOpenInline(artifact.outputMimeType || file?.mimeType || null),
       })),
+      comments: this.getDriveComments(driveFileId),
       notices: uniqueNotices([
         ...refs.map((ref) => ref.materializationState),
         ...artifacts.filter((artifact) => artifact.status !== "saved").map((artifact) => artifact.status),

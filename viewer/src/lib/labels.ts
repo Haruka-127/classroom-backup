@@ -40,3 +40,44 @@ export function formatSubmissionStateLabel(state: string | null): string {
       return state ?? "不明";
   }
 }
+
+export function formatCourseStateLabel(state: string | null): string {
+  switch (state) {
+    case "ACTIVE":
+      return "利用中";
+    case "ARCHIVED":
+      return "アーカイブ済み";
+    case "PROVISIONED":
+      return "準備中";
+    case "DECLINED":
+      return "辞退済み";
+    default:
+      return state ?? "不明";
+  }
+}
+
+export function formatPublicationStateLabel(state: string | null): string {
+  switch (state) {
+    case "PUBLISHED":
+      return "公開済み";
+    case "DRAFT":
+      return "下書き";
+    case "DELETED":
+      return "削除済み";
+    default:
+      return state ?? "不明";
+  }
+}
+
+export function formatRoleLabel(role: string | null): string {
+  switch (role) {
+    case "STUDENT":
+      return "生徒";
+    case "TEACHER":
+      return "教師";
+    case "OWNER":
+      return "オーナー";
+    default:
+      return role ?? "不明";
+  }
+}

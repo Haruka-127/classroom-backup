@@ -20,6 +20,20 @@ describe("CoursePage", () => {
       if (url.includes("/classwork")) {
         return new Response(JSON.stringify({ courseId: "course-1", sections: [{ topicId: null, topicName: "トピックなし", items: [] }] }), { status: 200 });
       }
+      if (url.includes("/people")) {
+        return new Response(
+          JSON.stringify({
+            courseId: "course-1",
+            teachers: [{ userId: "teacher-1", name: "Teacher One", email: "teacher@example.com", photoUrl: null }],
+            students: [],
+            invitations: [],
+            studentGroups: [],
+            guardians: [],
+            guardianInvitations: [],
+          }),
+          { status: 200 },
+        );
+      }
       return new Response(
         JSON.stringify({
           courseId: "course-1",
@@ -32,6 +46,8 @@ describe("CoursePage", () => {
           courseState: "ACTIVE",
           updateTime: null,
           bannerColor: "#000",
+          aliases: ["d:math"],
+          gradingPeriods: [],
           notices: [],
         }),
         { status: 200 },
@@ -49,5 +65,9 @@ describe("CoursePage", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "授業" })).toBeTruthy());
     await userEvent.click(screen.getByRole("button", { name: "授業" }));
     expect(screen.getByText("トピックなし")).toBeTruthy();
+
+    await userEvent.click(screen.getByRole("button", { name: "メンバー" }));
+    expect(screen.getByText("Teacher One")).toBeTruthy();
+    expect(screen.getByText("エイリアス: d:math")).toBeTruthy();
   });
 });

@@ -31,6 +31,18 @@ export function AttachmentList({ attachments }: AttachmentListProps) {
                 {attachment.driveFile.name}
                 {attachment.driveFile.mimeType ? ` · ${attachment.driveFile.mimeType}` : ""}
               </p>
+              {attachment.driveFile.size || attachment.driveFile.modifiedTime ? (
+                <p className="muted">
+                  {attachment.driveFile.size ? `サイズ: ${attachment.driveFile.size}` : null}
+                  {attachment.driveFile.size && attachment.driveFile.modifiedTime ? " · " : null}
+                  {attachment.driveFile.modifiedTime ? `更新: ${new Date(attachment.driveFile.modifiedTime).toLocaleString()}` : null}
+                </p>
+              ) : null}
+              {attachment.driveFile.webViewLink ? (
+                <a href={attachment.driveFile.webViewLink} target="_blank" rel="noreferrer">
+                  Drive で開く
+                </a>
+              ) : null}
               {attachment.driveFile.artifacts.length > 0 ? (
                 attachment.driveFile.artifacts.map((artifact) =>
                   artifact.url ? (
@@ -54,6 +66,31 @@ export function AttachmentList({ attachments }: AttachmentListProps) {
               {attachment.driveFile.notices.map((notice) => (
                 <StateNotice key={`${attachment.driveFileId}-${notice.code}`} notice={notice} />
               ))}
+              {attachment.driveFile.comments.length > 0 ? (
+                <div className="stack-sm drive-comment-list">
+                  <strong>コメント</strong>
+                  {attachment.driveFile.comments.map((comment) => (
+                    <article className="history-entry" key={comment.commentId}>
+                      <strong>{comment.authorDisplayName ?? "コメント"}</strong>
+                      {comment.modifiedTime || comment.createdTime ? (
+                        <p className="muted">{new Date(comment.modifiedTime ?? comment.createdTime ?? "").toLocaleString()}</p>
+                      ) : null}
+                      {comment.content ? <p>{comment.content}</p> : null}
+                      {comment.quotedFileContentValue ? <p className="muted">引用: {comment.quotedFileContentValue}</p> : null}
+                      {comment.replies.length > 0 ? (
+                        <div className="stack-sm comment-reply-list">
+                          {comment.replies.map((reply) => (
+                            <div className="comment-reply" key={reply.replyId}>
+                              <strong>{reply.authorDisplayName ?? "返信"}</strong>
+                              {reply.content ? <p className="muted">{reply.content}</p> : null}
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </article>
+                  ))}
+                </div>
+              ) : null}
             </div>
           ) : null}
           {attachment.notices.map((notice) => (

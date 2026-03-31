@@ -29,6 +29,20 @@ async function createViewerFixture() {
     },
     "run-1",
   );
+  repositories.courseAliases.replaceForCourse("course-1", [{ courseId: "course-1", alias: "d:math" }]);
+  repositories.courseGradingPeriodSettings.replaceForCourse("course-1", {
+    courseId: "course-1",
+    rawJson: { gradingPeriods: [{ title: "前期", startDate: { year: 2026, month: 4, day: 1 }, endDate: { year: 2026, month: 7, day: 31 } }] },
+  });
+  repositories.userProfiles.upsert({ userId: "teacher-1", fullName: "Teacher One", email: "teacher@example.com" });
+  repositories.userProfiles.upsert({ userId: "student-1", fullName: "Student One", email: "student@example.com" });
+  repositories.teachers.replaceForCourse("course-1", [{ courseId: "course-1", userId: "teacher-1", profileName: "Teacher One" }]);
+  repositories.students.replaceForCourse("course-1", [{ courseId: "course-1", userId: "student-1", profileName: "Student One" }]);
+  repositories.invitations.replaceAll([{ invitationId: "invite-1", courseId: "course-1", userId: "student-1", role: "STUDENT" }]);
+  repositories.studentGroups.replaceForCourse("course-1", [{ courseId: "course-1", studentGroupId: "group-1", title: "Group A" }]);
+  repositories.studentGroupMembers.replaceForGroup("course-1", "group-1", [{ courseId: "course-1", studentGroupId: "group-1", userId: "student-1" }]);
+  repositories.guardians.replaceForStudent("me", [{ studentId: "me", guardianId: "guardian-1", guardianName: "Guardian One", invitedEmailAddress: "guardian@example.com" }]);
+  repositories.guardianInvitations.replaceForStudent("me", [{ studentId: "me", invitationId: "guardian-invite-1", invitedEmailAddress: "guardian@example.com", state: "COMPLETE" }]);
   repositories.topics.replaceForCourse("course-1", [{ courseId: "course-1", topicId: "topic-1", name: "Week 1" }]);
   repositories.announcements.replaceForCourse("course-1", [
     {
@@ -55,6 +69,17 @@ async function createViewerFixture() {
       workType: "ASSIGNMENT",
       topicId: "topic-1",
       updateTime: "2026-03-30T11:00:00.000Z",
+      rawJson: {
+        id: "cw-1",
+        title: "Assignment 1",
+        description: "Solve the worksheet",
+        workType: "ASSIGNMENT",
+        topicId: "topic-1",
+        updateTime: "2026-03-30T11:00:00.000Z",
+        dueDate: { year: 2026, month: 3, day: 31 },
+        dueTime: { hours: 23, minutes: 59 },
+        maxPoints: 100,
+      },
       materials: [
         {
           driveFile: {
@@ -81,10 +106,30 @@ async function createViewerFixture() {
       courseId: "course-1",
       courseWorkId: "cw-1",
       submissionId: "submission-1",
+      userId: "student-1",
       state: "TURNED_IN",
       shortAnswerSubmission: { answer: "42" },
       assignedGrade: 95,
+      rawJson: {
+        id: "submission-1",
+        state: "TURNED_IN",
+        shortAnswerSubmission: { answer: "42" },
+        submissionHistory: [{ stateHistory: { state: "TURNED_IN", stateTimestamp: "2026-03-30T12:00:00.000Z", actorUserId: "teacher-1" } }],
+      },
       assignmentSubmission: { attachments: [{ driveFile: { id: "drive-2", title: "Answer.pdf", alternateLink: "https://drive.example/drive-2" } }] },
+    },
+  ]);
+  repositories.rubrics.replaceForCourseWork("course-1", "cw-1", [
+    {
+      courseId: "course-1",
+      courseWorkId: "cw-1",
+      rubricId: "rubric-1",
+      title: "採点基準",
+      rawJson: {
+        id: "rubric-1",
+        title: "採点基準",
+        criteria: [{ id: "criterion-1", title: "内容", levels: [{ id: "level-1", title: "達成", points: 5 }] }],
+      },
     },
   ]);
   repositories.driveFileRefs.replaceForCourse("course-1", [
@@ -192,6 +237,15 @@ async function createViewerFixture() {
     checksumType: "sha256",
     checksumValue: drive2BlobId,
   });
+  repositories.driveComments.replaceForFile("drive-1", [
+    {
+      driveFileId: "drive-1",
+      commentId: "comment-1",
+      content: "Needs work",
+      authorDisplayName: "Teacher One",
+      repliesJson: [{ id: "reply-1", author: { displayName: "Student One" }, content: "Updated" }],
+    },
+  ]);
 
   await writeFile(path.join(root, "touch.txt"), "ok");
   return { root, databasePath, db };
@@ -203,14 +257,20 @@ describe("ViewerReadModel", () => {
     const readModel = new ViewerReadModel(fixture.db);
 
     expect(readModel.listCourses().courses).toHaveLength(1);
-    expect(readModel.getCourse("course-1")?.name).toBe("Math");
+    expect(readModel.getCourse("course-1")?.aliases).toEqual(["d:math"]);
+    expect(readModel.getCourse("course-1")?.gradingPeriods[0]?.title).toBe("前期");
     expect(readModel.getCourseStream("course-1")?.items[0]?.itemType).toBe("course_work");
     expect(readModel.getCourseStream("course-1")?.items.find((item) => item.id === "ann-1")?.attachments[0]?.driveFile?.artifacts[0]?.url).toMatch(
       /^\/api\/artifacts\/\d+$/,
     );
     expect(readModel.getCourseClasswork("course-1")?.sections).toHaveLength(2);
     expect(readModel.getCourseWorkDetail("course-1", "cw-1")?.submission?.shortAnswer).toBe("42");
+    expect(readModel.getCourseWorkDetail("course-1", "cw-1")?.rubrics[0]?.title).toBe("採点基準");
+    expect(readModel.getCourseWorkDetail("course-1", "cw-1")?.submission?.history[0]?.actorName).toBe("Teacher One");
     expect(readModel.getCourseWorkMaterialDetail("course-1", "cwm-1")?.attachments[0]?.notices[0]?.code).toBe("unavailable");
+    expect(readModel.getCoursePeople("course-1")?.teachers[0]?.name).toBe("Teacher One");
+    expect(readModel.getCoursePeople("course-1")?.studentGroups[0]?.members[0]?.name).toBe("Student One");
+    expect(readModel.getDriveFile("drive-1")?.comments[0]?.replies[0]?.content).toBe("Updated");
 
     closeDatabase(fixture.db);
   });

@@ -23,6 +23,8 @@ async function createServerFixture() {
   const blobId = createHash("sha256").update(content).digest("hex");
   repositories.artifactBlobs.upsert(content, blobId, content.byteLength);
   repositories.courses.upsert({ id: "course-1", name: "Math" }, "run-1");
+  repositories.teachers.replaceForCourse("course-1", [{ courseId: "course-1", userId: "teacher-1", profileName: "Teacher One" }]);
+  repositories.userProfiles.upsert({ userId: "teacher-1", fullName: "Teacher One", email: "teacher@example.com" });
   repositories.driveFileRefs.replaceForCourse("course-1", [
     {
       courseId: "course-1",
@@ -74,6 +76,10 @@ describe("startViewerServer", () => {
     const courseResponse = await fetch(`${server.origin}/api/courses`);
     expect(courseResponse.status).toBe(200);
     expect(((await courseResponse.json()) as { courses: Array<{ courseId: string }> }).courses[0]?.courseId).toBe("course-1");
+
+    const peopleResponse = await fetch(`${server.origin}/api/courses/course-1/people`);
+    expect(peopleResponse.status).toBe(200);
+    expect(((await peopleResponse.json()) as { teachers: Array<{ name: string }> }).teachers[0]?.name).toBe("Teacher One");
 
     const fileResponse = await fetch(`${server.origin}/api/files/drive-1`);
     expect(fileResponse.status).toBe(200);

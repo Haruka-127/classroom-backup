@@ -24,7 +24,16 @@ describe("CourseWorkDetailPage", () => {
           topicName: null,
           updateTime: null,
           alternateLink: null,
+          dueLabel: "提出期限: 2026/3/31 23:59",
+          pointsLabel: "100 点",
           attachments: [],
+          rubrics: [
+            {
+              rubricId: "rubric-1",
+              title: "採点基準",
+              criteria: [{ criterionId: "criterion-1", title: "内容", description: null, levels: [{ levelId: "level-1", title: "達成", description: null, points: 5 }] }],
+            },
+          ],
           notices: [],
           submission: {
             submissionId: "submission-1",
@@ -37,6 +46,7 @@ describe("CourseWorkDetailPage", () => {
             multipleChoiceAnswer: null,
             alternateLink: null,
             attachments: [],
+            history: [{ entryId: "state-1", title: "状態が TURNED_IN に変更されました", description: null, actorName: "Teacher", timestamp: null }],
             notices: [],
           },
         }),
@@ -54,5 +64,7 @@ describe("CourseWorkDetailPage", () => {
 
     await waitFor(() => expect(screen.getByText("状態: 提出済み")).toBeTruthy());
     expect(screen.getByText("記述式の回答: 42")).toBeTruthy();
+    expect(screen.getByText("採点基準")).toBeTruthy();
+    expect(screen.getByText("状態が TURNED_IN に変更されました")).toBeTruthy();
   });
 });

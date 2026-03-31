@@ -110,6 +110,17 @@ export async function routeViewerRequest(
     return;
   }
 
+  if (segments[0] === "api" && segments[1] === "courses" && subResource === "people" && segments.length === 4 && courseId) {
+    const people = dependencies.readModel.getCoursePeople(decodeURIComponent(courseId));
+    if (!people) {
+      sendError(response, 404, "Course not found.");
+      return;
+    }
+
+    sendJson(response, 200, people);
+    return;
+  }
+
   if (segments[0] === "api" && segments[1] === "courses" && subResource === "course-work" && segments.length === 5 && courseId && entityId) {
     const detail = dependencies.readModel.getCourseWorkDetail(decodeURIComponent(courseId), decodeURIComponent(entityId));
     if (!detail) {

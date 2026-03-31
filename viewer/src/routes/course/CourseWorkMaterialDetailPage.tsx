@@ -5,6 +5,7 @@ import { Link, useParams } from "react-router-dom";
 import { AttachmentList } from "../../components/AttachmentList";
 import { StateNotice } from "../../components/StateNotice";
 import { viewerApi } from "../../lib/api";
+import { formatPublicationStateLabel } from "../../lib/labels";
 import type { ViewerCourseWorkMaterialDetail } from "../../lib/types";
 
 export function CourseWorkMaterialDetailPage() {
@@ -50,6 +51,15 @@ export function CourseWorkMaterialDetailPage() {
         <h1>{detail.title}</h1>
         {detail.topicName ? <p className="muted">トピック: {detail.topicName}</p> : null}
         {detail.description ? <p>{detail.description}</p> : null}
+        {detail.state ? <p className="muted">状態: {formatPublicationStateLabel(detail.state)}</p> : null}
+        {detail.updateTime ? <p className="muted">最終更新: {new Date(detail.updateTime).toLocaleString()}</p> : null}
+        {detail.alternateLink ? (
+          <p>
+            <a href={detail.alternateLink} target="_blank" rel="noreferrer">
+              Classroom で開く
+            </a>
+          </p>
+        ) : null}
       </div>
       {detail.notices.map((notice) => (
         <StateNotice key={notice.code} notice={notice} />

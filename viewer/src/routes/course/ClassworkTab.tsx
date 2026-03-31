@@ -1,7 +1,7 @@
 import React from "react";
 import { Link } from "react-router-dom";
 
-import { formatWorkTypeLabel } from "../../lib/labels";
+import { formatPublicationStateLabel, formatWorkTypeLabel } from "../../lib/labels";
 import type { ViewerClassworkResponse } from "../../lib/types";
 
 interface ClassworkTabProps {
@@ -20,6 +20,10 @@ export function ClassworkTab({ classwork }: ClassworkTabProps) {
                 <div>
                   <strong>{item.title}</strong>
                   {item.description ? <p className="muted">{item.description}</p> : null}
+                  <p className="muted">
+                    {item.state ? `状態: ${formatPublicationStateLabel(item.state)}` : "状態不明"}
+                    {item.updateTime ? ` · 更新: ${new Date(item.updateTime).toLocaleString()}` : ""}
+                  </p>
                 </div>
                 <span className="pill">{item.itemType === "course_work" ? formatWorkTypeLabel(item.workType) : "教材"}</span>
               </Link>

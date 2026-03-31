@@ -1,7 +1,7 @@
 import React from "react";
 import { Link } from "react-router-dom";
 
-import { formatWorkTypeLabel } from "../../lib/labels";
+import { formatPublicationStateLabel, formatWorkTypeLabel } from "../../lib/labels";
 import type { ViewerStreamResponse } from "../../lib/types";
 
 interface StreamTabProps {
@@ -11,6 +11,19 @@ interface StreamTabProps {
 export function StreamTab({ stream }: StreamTabProps) {
   return (
     <div className="stream-feed stream-feed-full stack-md">
+      {stream.upcoming.length > 0 ? (
+        <section className="panel stack-sm">
+          <h2>今後の予定</h2>
+          <div className="stack-sm">
+            {stream.upcoming.map((item) => (
+              <Link className="upcoming-link" key={item.id} to={item.detailPath}>
+                <strong>{item.title}</strong>
+                {item.dueLabel ? <span className="muted">{item.dueLabel}</span> : null}
+              </Link>
+            ))}
+          </div>
+        </section>
+      ) : null}
       {stream.items.map((item) => (
         <article className="stream-card classroom-stream-card" key={`${item.itemType}-${item.id}`}>
           {item.authorName || item.createdTime || item.topicName ? (
@@ -28,8 +41,10 @@ export function StreamTab({ stream }: StreamTabProps) {
           ) : null}
           <div className="stream-chip-row">
             <span className="pill">{item.itemType === "announcement" ? "お知らせ" : formatWorkTypeLabel(item.workType)}</span>
+            {item.state ? <span className="muted">状態: {formatPublicationStateLabel(item.state)}</span> : null}
             {item.pointsLabel ? <span className="muted">{item.pointsLabel}</span> : null}
             {item.dueLabel ? <span className="muted">{item.dueLabel}</span> : null}
+            {item.updateTime ? <span className="muted">更新: {new Date(item.updateTime).toLocaleString()}</span> : null}
           </div>
           <h3 className="stream-title">{item.title}</h3>
           {item.body ? <p className="stream-body-copy">{item.body}</p> : null}

@@ -17,6 +17,7 @@ import { runFullSync } from "./full-sync.js";
 
 export interface IncrementalSyncOptions {
   out: string;
+  driveConcurrency?: number;
   services?: {
     classroom?: ClassroomService;
     drive?: DriveService;
@@ -63,6 +64,7 @@ export async function runIncrementalSync(options: IncrementalSyncOptions) {
 
     const result = await runFullSync({
       out: options.out,
+      driveConcurrency: options.driveConcurrency,
       services: { classroom, drive },
       logger,
       now,

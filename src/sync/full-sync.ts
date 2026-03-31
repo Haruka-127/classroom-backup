@@ -48,6 +48,7 @@ import { capturePendingStartPageToken, commitPendingCheckpoint } from "./checkpo
 
 export interface FullSyncOptions {
   out: string;
+  driveConcurrency?: number;
   services?: {
     classroom?: ClassroomService;
     drive?: DriveService;
@@ -118,6 +119,11 @@ type CourseSyncBundle = {
   hadResourceFailures: boolean;
 };
 
+type DriveFileSyncResult = {
+  artifacts: ManifestArtifactEntry[];
+  statusRecords: StatusRecord[];
+};
+
 function normalizeClassroomReasonCode(httpStatus: number | null): string {
   if (httpStatus === 403) {
     return "permission_denied";
@@ -134,9 +140,20 @@ function normalizeClassroomReasonCode(httpStatus: number | null): string {
   return "classroom_resource_fetch_failed";
 }
 
+function resolveDriveConcurrency(value: number | undefined): number {
+  const resolved = value ?? 4;
+
+  if (!Number.isInteger(resolved) || resolved <= 0) {
+    throw new Error(`Invalid drive concurrency: ${String(value)}`);
+  }
+
+  return resolved;
+}
+
 export async function runFullSync(options: FullSyncOptions): Promise<FullSyncResult> {
   const now = options.now ?? (() => new Date().toISOString());
   const logger = options.logger;
+  const driveConcurrency = resolveDriveConcurrency(options.driveConcurrency);
   const paths = resolveAppPaths(options.out);
   await ensureAppDirectories(paths);
 
@@ -738,8 +755,23 @@ export async function runFullSync(options: FullSyncOptions): Promise<FullSyncRes
     const artifacts: ManifestArtifactEntry[] = [];
     const driveFileIds = repositories.driveFileRefs.listReadyDriveFileIds();
     logger?.log(`Fetching ${driveFileIds.length} Drive files...`);
-    for (const [index, driveFileId] of driveFileIds.entries()) {
-      logger?.log(`[${index + 1}/${driveFileIds.length}] Fetching Drive file ${driveFileId}`);
+
+    const driveLimit = pLimit(driveConcurrency);
+    const processDriveFile = async (driveFileId: string, index: number): Promise<DriveFileSyncResult> => {
+      const fileArtifacts: ManifestArtifactEntry[] = [];
+      const fileStatusRecords: StatusRecord[] = [];
+      const positionLabel = `[${index + 1}/${driveFileIds.length}]`;
+      const persistDriveStatusRecord = (status: Omit<StatusRecord, "runId">) => {
+        const record = { runId, ...status };
+        fileStatusRecords.push(record);
+        repositories.syncStatusRecords.insert(record);
+      };
+      const recordDriveFailure = (failure: Omit<SyncFailureRecord, "runId">, status: Omit<StatusRecord, "runId">) => {
+        repositories.failures.insert({ runId, ...failure });
+        persistDriveStatusRecord(status);
+      };
+
+      logger?.log(`${positionLabel} Fetching Drive file ${driveFileId}`);
 
       let fileHadFailures = false;
       let file: DriveFileRecord;
@@ -747,7 +779,7 @@ export async function runFullSync(options: FullSyncOptions): Promise<FullSyncRes
         file = await drive.getFile(driveFileId);
       } catch (error) {
         const message = describeError(error);
-        recordFailure(
+        recordDriveFailure(
           {
             scope: "drive",
             entityType: "drive_file",
@@ -764,8 +796,8 @@ export async function runFullSync(options: FullSyncOptions): Promise<FullSyncRes
             message: `Failed to fetch Drive file ${driveFileId}: ${message}`,
           },
         );
-        logger?.log(`[${index + 1}/${driveFileIds.length}] Failed to fetch Drive file ${driveFileId}; continuing.`);
-        continue;
+        logger?.log(`${positionLabel} Failed to fetch Drive file ${driveFileId}; continuing.`);
+        return { artifacts: fileArtifacts, statusRecords: fileStatusRecords };
       }
 
       repositories.driveFiles.upsert(file);
@@ -776,7 +808,7 @@ export async function runFullSync(options: FullSyncOptions): Promise<FullSyncRes
       } catch (error) {
         const message = describeError(error);
         fileHadFailures = true;
-        recordFailure(
+        recordDriveFailure(
           {
             scope: "drive",
             entityType: "drive_comments",
@@ -793,7 +825,7 @@ export async function runFullSync(options: FullSyncOptions): Promise<FullSyncRes
             message: `Failed to fetch Drive comments for ${driveFileId}: ${message}`,
           },
         );
-        logger?.log(`[${index + 1}/${driveFileIds.length}] Failed to fetch comments for ${driveFileId}; continuing.`);
+        logger?.log(`${positionLabel} Failed to fetch comments for ${driveFileId}; continuing.`);
       }
 
       if (file.mimeType && !isGoogleWorkspaceMimeType(file.mimeType)) {
@@ -814,11 +846,11 @@ export async function runFullSync(options: FullSyncOptions): Promise<FullSyncRes
             checksumValue: blobId,
             sourceModifiedTime: file.modifiedTime ?? null,
           });
-          artifacts.push(entry);
+          fileArtifacts.push(entry);
         } catch (error) {
           const message = describeError(error);
           fileHadFailures = true;
-          recordFailure(
+          recordDriveFailure(
             {
               scope: "drive",
               entityType: "blob",
@@ -847,8 +879,8 @@ export async function runFullSync(options: FullSyncOptions): Promise<FullSyncRes
             checksumValue: null,
             sourceModifiedTime: file.modifiedTime ?? null,
           });
-          artifacts.push(fallbackEntry);
-          logger?.log(`[${index + 1}/${driveFileIds.length}] Failed to download blob for ${driveFileId}; continuing.`);
+          fileArtifacts.push(fallbackEntry);
+          logger?.log(`${positionLabel} Failed to download blob for ${driveFileId}; continuing.`);
         }
       }
 
@@ -873,12 +905,12 @@ export async function runFullSync(options: FullSyncOptions): Promise<FullSyncRes
               checksumValue: blobId,
               sourceModifiedTime: file.modifiedTime ?? null,
             });
-            artifacts.push(entry);
+            fileArtifacts.push(entry);
             savedAny = true;
           } catch (error) {
             const message = describeError(error);
             fileHadFailures = true;
-            recordFailure(
+            recordDriveFailure(
               {
                 scope: "drive",
                 entityType: "export",
@@ -895,7 +927,7 @@ export async function runFullSync(options: FullSyncOptions): Promise<FullSyncRes
                 message: `Failed to export ${driveFileId} as ${target.mimeType}: ${message}`,
               },
             );
-            logger?.log(`[${index + 1}/${driveFileIds.length}] Failed to export ${driveFileId} as ${target.mimeType}; continuing.`);
+            logger?.log(`${positionLabel} Failed to export ${driveFileId} as ${target.mimeType}; continuing.`);
           }
         }
 
@@ -912,18 +944,28 @@ export async function runFullSync(options: FullSyncOptions): Promise<FullSyncRes
             checksumValue: null,
             sourceModifiedTime: file.modifiedTime ?? null,
           });
-          artifacts.push(fallbackEntry);
+          fileArtifacts.push(fallbackEntry);
         }
       }
 
-      persistStatusRecord({
-        runId,
+      persistDriveStatusRecord({
         scope: "drive",
         entityType: "drive_file",
         entityId: driveFileId,
         status: fileHadFailures ? "partial" : "success",
         message: fileHadFailures ? `Backed up Drive file ${driveFileId} with some failures` : `Backed up Drive file ${driveFileId}`,
       });
+
+      return { artifacts: fileArtifacts, statusRecords: fileStatusRecords };
+    };
+
+    const driveResults = await Promise.all(
+      driveFileIds.map((driveFileId, index) => driveLimit(() => processDriveFile(driveFileId, index))),
+    );
+
+    for (const result of driveResults) {
+      artifacts.push(...result.artifacts);
+      statusRecords.push(...result.statusRecords);
     }
 
     const pendingMaterializationCount = repositories.driveFileRefs.listPendingMaterializationRefs().length;

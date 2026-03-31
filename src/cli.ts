@@ -25,12 +25,14 @@ backup
   .command("full")
   .description("Run a full backup sync")
   .requiredOption("--out <dir>", "Backup output directory")
+  .option("--drive-concurrency <number>", "Max concurrent Drive file fetches (default: 4)")
   .action(runBackupFullCommand);
 
 backup
   .command("sync")
   .description("Run an incremental backup sync")
   .requiredOption("--out <dir>", "Backup output directory")
+  .option("--drive-concurrency <number>", "Max concurrent Drive file fetches (default: 4)")
   .action(runBackupSyncCommand);
 
 program

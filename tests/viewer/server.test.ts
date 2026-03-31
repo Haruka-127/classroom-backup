@@ -44,7 +44,7 @@ async function createServerFixture() {
     driveFileId: "drive-1",
     artifactKind: "blob",
     outputMimeType: "application/pdf",
-    downloadName: "blob.pdf",
+    downloadName: "課題.pdf",
     status: "saved",
     blobId,
     sizeBytes: content.byteLength,
@@ -81,6 +81,7 @@ describe("startViewerServer", () => {
     const filePayload = (await fileResponse.json()) as { artifacts: Array<{ artifactId: number }> };
     const artifactResponse = await fetch(`${server.origin}/api/artifacts/${filePayload.artifacts[0]?.artifactId}`);
     expect(artifactResponse.status).toBe(200);
+    expect(artifactResponse.headers.get("content-disposition")).toContain("filename*=UTF-8''%E8%AA%B2%E9%A1%8C.pdf");
     expect(await artifactResponse.text()).toBe("pdf");
 
     const missingArtifactResponse = await fetch(`${server.origin}/api/artifacts/not-a-number`);

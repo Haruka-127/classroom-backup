@@ -9,6 +9,17 @@ export interface ViewerRouterDependencies {
   staticRoot: string;
 }
 
+function encodeContentDispositionFilename(downloadName: string): string {
+  const fallback = downloadName
+    .replace(/["\\]/g, "")
+    .replace(/[^\x20-\x7E]+/g, "_")
+    .trim() || "download";
+  const encoded = encodeURIComponent(downloadName).replace(/[!'()*]/g, (character) =>
+    `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+  return `inline; filename="${fallback}"; filename*=UTF-8''${encoded}`;
+}
+
 function sendJson(response: ServerResponse, statusCode: number, payload: unknown): void {
   response.writeHead(statusCode, { "content-type": "application/json; charset=utf-8" });
   response.end(JSON.stringify(payload));
@@ -29,7 +40,7 @@ function sendFile(response: ServerResponse, file: { content: Buffer; contentType
 function sendArtifact(response: ServerResponse, artifact: { content: Buffer; contentType: string; downloadName: string }): void {
   response.writeHead(200, {
     "content-type": artifact.contentType,
-    "content-disposition": `inline; filename="${artifact.downloadName.replace(/"/g, "")}"`,
+    "content-disposition": encodeContentDispositionFilename(artifact.downloadName),
   });
   response.end(artifact.content);
 }

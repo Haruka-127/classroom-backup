@@ -187,11 +187,11 @@ class FakeDriveService implements DriveService {
     ];
   }
 
-  async downloadBlob() {
+  async downloadBlob(_fileId: string) {
     return Buffer.from("pdf-content");
   }
 
-  async exportFile() {
+  async exportFile(_fileId: string, _mimeType: string) {
     return Buffer.from("export-content");
   }
 
@@ -207,6 +207,21 @@ class PartiallyFailingDriveService extends FakeDriveService {
     }
 
     return super.getFile(fileId);
+  }
+}
+
+class ConcurrentDownloadDriveService extends FakeDriveService {
+  maxConcurrentDownloads = 0;
+  private activeDownloads = 0;
+
+  override async downloadBlob(fileId: string) {
+    this.activeDownloads += 1;
+    this.maxConcurrentDownloads = Math.max(this.maxConcurrentDownloads, this.activeDownloads);
+
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    this.activeDownloads -= 1;
+    return Buffer.from(`pdf-content-${fileId}`);
   }
 }
 
@@ -410,6 +425,70 @@ describe("runFullSync", () => {
 
     expect(logger.log).toHaveBeenCalledWith("Fetching 2 Drive files...");
     expect(logger.log).toHaveBeenCalledWith("[1/2] Failed to fetch Drive file drive-missing; continuing.");
+  });
+
+  it("downloads multiple Drive files concurrently", async () => {
+    const outDir = path.join(os.tmpdir(), `classroom-backup-sync-concurrent-${Date.now()}`);
+    const paths = resolveAppPaths(outDir);
+    await mkdir(paths.configRoot, { recursive: true });
+    await mkdir(outDir, { recursive: true });
+    await mkdir(path.dirname(paths.oauthClientPath), { recursive: true });
+    await import("node:fs/promises").then(({ writeFile }) =>
+      writeFile(
+        paths.oauthClientPath,
+        JSON.stringify({ clientId: "test-client", clientSecret: "secret", redirectUris: ["http://127.0.0.1"] }),
+      ),
+    );
+
+    const drive = new ConcurrentDownloadDriveService();
+    const classroom = new FakeClassroomService([
+      {
+        course: { id: "course-1", name: "Math", courseState: "ACTIVE" },
+        topics: [],
+        announcements: [],
+        courseWork: [
+          {
+            courseId: "course-1",
+            courseWorkId: "cw-1",
+            title: "Assignment",
+            materials: [
+              {
+                driveFile: {
+                  driveFile: { id: "drive-1", alternateLink: "https://drive.google.com/file/d/drive-1" },
+                  shareMode: "VIEW",
+                },
+              },
+              {
+                driveFile: {
+                  driveFile: { id: "drive-2", alternateLink: "https://drive.google.com/file/d/drive-2" },
+                  shareMode: "VIEW",
+                },
+              },
+              {
+                driveFile: {
+                  driveFile: { id: "drive-3", alternateLink: "https://drive.google.com/file/d/drive-3" },
+                  shareMode: "VIEW",
+                },
+              },
+            ],
+          },
+        ],
+        courseWorkMaterials: [],
+        studentSubmissions: [],
+      },
+    ]);
+
+    const result = await runFullSync({
+      out: outDir,
+      driveConcurrency: 2,
+      services: { classroom, drive },
+      now: () => "2026-03-31T00:00:00.000Z",
+    });
+
+    expect(result.status).toBe("success");
+    expect(result.artifacts).toHaveLength(3);
+    expect(drive.maxConcurrentDownloads).toBeGreaterThan(1);
+    expect(drive.maxConcurrentDownloads).toBeLessThanOrEqual(2);
   });
 
   it("preserves raw Classroom fields for viewer rendering", async () => {

@@ -235,6 +235,23 @@ class PermissionDeniedClassroomService extends FakeClassroomService {
   }
 }
 
+class ConcurrentAnnouncementDetailClassroomService extends FakeClassroomService {
+  maxConcurrentAnnouncementGets = 0;
+  private activeAnnouncementGets = 0;
+
+  override async getAnnouncement(courseId: string, announcementId: string) {
+    this.activeAnnouncementGets += 1;
+    this.maxConcurrentAnnouncementGets = Math.max(this.maxConcurrentAnnouncementGets, this.activeAnnouncementGets);
+
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      return await super.getAnnouncement(courseId, announcementId);
+    } finally {
+      this.activeAnnouncementGets -= 1;
+    }
+  }
+}
+
 describe("runFullSync", () => {
   it("writes manifest and status report for a full sync", async () => {
     const outDir = path.join(os.tmpdir(), `classroom-backup-sync-${Date.now()}`);
@@ -427,6 +444,46 @@ describe("runFullSync", () => {
     expect(logger.log).toHaveBeenCalledWith("[1/2] Failed to fetch Drive file drive-missing; continuing.");
   });
 
+  it("logs Classroom progress while fetching initial data", async () => {
+    const outDir = path.join(os.tmpdir(), `classroom-backup-sync-logging-${Date.now()}`);
+    const paths = resolveAppPaths(outDir);
+    await mkdir(paths.configRoot, { recursive: true });
+    await mkdir(outDir, { recursive: true });
+    await mkdir(path.dirname(paths.oauthClientPath), { recursive: true });
+    await import("node:fs/promises").then(({ writeFile }) =>
+      writeFile(
+        paths.oauthClientPath,
+        JSON.stringify({ clientId: "test-client", clientSecret: "secret", redirectUris: ["http://127.0.0.1"] }),
+      ),
+    );
+
+    const logger = { log: vi.fn() };
+    const classroom = new FakeClassroomService([
+      {
+        course: { id: "course-1", name: "Math", courseState: "ACTIVE" },
+        topics: [{ courseId: "course-1", topicId: "topic-1", name: "Week 1" }],
+        announcements: [{ courseId: "course-1", announcementId: "ann-1", text: "Hello" }],
+        courseWork: [],
+        courseWorkMaterials: [],
+        studentSubmissions: [],
+      },
+    ]);
+
+    await runFullSync({
+      out: outDir,
+      services: { classroom, drive: new FakeDriveService() },
+      logger,
+      now: () => "2026-03-31T00:00:00.000Z",
+    });
+
+    const messages = logger.log.mock.calls.map(([message]) => String(message));
+    expect(messages).toContain("Found 1 courses. Fetching per-course Classroom resources...");
+    expect(messages).toContain("[1/1] Fetching Classroom resources for course course-1");
+    expect(messages).toContain("[1/1] Finished Classroom resources for course course-1");
+    expect(messages).toContain("Fetching 1 user profiles...");
+    expect(messages).toContain("Fetching invitations...");
+  });
+
   it("downloads multiple Drive files concurrently", async () => {
     const outDir = path.join(os.tmpdir(), `classroom-backup-sync-concurrent-${Date.now()}`);
     const paths = resolveAppPaths(outDir);
@@ -489,6 +546,44 @@ describe("runFullSync", () => {
     expect(result.artifacts).toHaveLength(3);
     expect(drive.maxConcurrentDownloads).toBeGreaterThan(1);
     expect(drive.maxConcurrentDownloads).toBeLessThanOrEqual(2);
+  });
+
+  it("fetches Classroom detail resources with a higher concurrency limit", async () => {
+    const outDir = path.join(os.tmpdir(), `classroom-backup-sync-classroom-concurrency-${Date.now()}`);
+    const paths = resolveAppPaths(outDir);
+    await mkdir(paths.configRoot, { recursive: true });
+    await mkdir(outDir, { recursive: true });
+    await mkdir(path.dirname(paths.oauthClientPath), { recursive: true });
+    await import("node:fs/promises").then(({ writeFile }) =>
+      writeFile(
+        paths.oauthClientPath,
+        JSON.stringify({ clientId: "test-client", clientSecret: "secret", redirectUris: ["http://127.0.0.1"] }),
+      ),
+    );
+
+    const classroom = new ConcurrentAnnouncementDetailClassroomService([
+      {
+        course: { id: "course-1", name: "Math", courseState: "ACTIVE" },
+        topics: [],
+        announcements: Array.from({ length: 10 }, (_, index) => ({
+          courseId: "course-1",
+          announcementId: `ann-${index + 1}`,
+          text: `Announcement ${index + 1}`,
+        })),
+        courseWork: [],
+        courseWorkMaterials: [],
+        studentSubmissions: [],
+      },
+    ]);
+
+    const result = await runFullSync({
+      out: outDir,
+      services: { classroom, drive: new FakeDriveService() },
+      now: () => "2026-03-31T00:00:00.000Z",
+    });
+
+    expect(result.status).toBe("success");
+    expect(classroom.maxConcurrentAnnouncementGets).toBeGreaterThan(6);
   });
 
   it("preserves raw Classroom fields for viewer rendering", async () => {

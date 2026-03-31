@@ -124,6 +124,9 @@ type DriveFileSyncResult = {
   statusRecords: StatusRecord[];
 };
 
+const COURSE_FETCH_CONCURRENCY = 8;
+const CLASSROOM_DETAIL_CONCURRENCY = 16;
+
 function normalizeClassroomReasonCode(httpStatus: number | null): string {
   if (httpStatus === 403) {
     return "permission_denied";
@@ -357,11 +360,15 @@ export async function runFullSync(options: FullSyncOptions): Promise<FullSyncRes
     };
 
     const courses = await classroom.listCourses();
-    const limit = pLimit(4);
-    const detailLimit = pLimit(6);
+    logger?.log(`Found ${courses.length} courses. Fetching per-course Classroom resources...`);
+    const limit = pLimit(COURSE_FETCH_CONCURRENCY);
+    const detailLimit = pLimit(CLASSROOM_DETAIL_CONCURRENCY);
     const courseBundles = await Promise.all(
-      courses.map((course) =>
+      courses.map((course, index) =>
         limit(async (): Promise<CourseSyncBundle> => {
+          const courseLabel = `[${index + 1}/${courses.length}]`;
+          logger?.log(`${courseLabel} Fetching Classroom resources for course ${course.id}`);
+
           const courseDetail = await fetchCourseDetailResource({
             courseId: course.id,
             entityType: "course",
@@ -394,6 +401,13 @@ export async function runFullSync(options: FullSyncOptions): Promise<FullSyncRes
             fetchOptionalCourseResource({ courseId: course.id, entityType: "teachers", emptyValue: [], fetcher: () => classroom.listTeachers(course.id) }),
             fetchOptionalCourseResource({ courseId: course.id, entityType: "student_groups", emptyValue: [], fetcher: () => classroom.listStudentGroups(course.id) }),
           ]);
+
+          logger?.log(
+            `${courseLabel} Expanding details for course ${course.id} ` +
+              `(topics: ${topics.item.length}, announcements: ${announcements.item.length}, courseWork: ${courseWork.item.length}, ` +
+              `materials: ${courseWorkMaterials.item.length}, submissions: ${studentSubmissions.item.length}, ` +
+              `students: ${students.item.length}, teachers: ${teachers.item.length}, groups: ${studentGroups.item.length})`,
+          );
 
           const detailedTopics = await Promise.all(
             topics.item.map((item) =>
@@ -542,6 +556,8 @@ export async function runFullSync(options: FullSyncOptions): Promise<FullSyncRes
               ? "not_returned"
               : "visible";
 
+          logger?.log(`${courseLabel} Finished Classroom resources for course ${course.id}`);
+
           return {
             course: courseDetail,
             aliases: aliases.item,
@@ -565,16 +581,20 @@ export async function runFullSync(options: FullSyncOptions): Promise<FullSyncRes
 
     logger?.log(`Fetched ${courseBundles.length} courses.`);
 
+    logger?.log("Fetching invitations...");
     const invitations = await fetchGlobalListResource({ entityType: "invitations", fetcher: () => classroom.listInvitations() });
+    logger?.log(`Fetching ${invitations.length} invitation details...`);
     const detailedInvitations = await Promise.all(
       invitations.map((invitation) =>
-        fetchCourseDetailResource({
-          courseId: invitation.courseId ?? "global",
-          entityType: "invitations",
-          itemId: invitation.invitationId,
-          fetcher: () => classroom.getInvitation(invitation.invitationId),
-          fallback: invitation,
-        }),
+        detailLimit(() =>
+          fetchCourseDetailResource({
+            courseId: invitation.courseId ?? "global",
+            entityType: "invitations",
+            itemId: invitation.invitationId,
+            fetcher: () => classroom.getInvitation(invitation.invitationId),
+            fallback: invitation,
+          }),
+        ),
       ),
     );
 
@@ -593,63 +613,74 @@ export async function runFullSync(options: FullSyncOptions): Promise<FullSyncRes
         userIds.add(invitation.userId);
       }
     }
+    logger?.log(`Fetching ${userIds.size} user profiles...`);
     const userProfiles = (
       await Promise.all(
-        [...userIds].map(async (userId) => {
-          try {
-            return await classroom.getUserProfile(userId);
-          } catch (error) {
-            const message = describeError(error);
-            const httpStatus = getErrorStatus(error);
-            recordFailure(
-              {
-                scope: "classroom",
-                entityType: "user_profiles",
-                entityId: userId,
-                status: "failed",
-                reasonCode: normalizeClassroomReasonCode(httpStatus),
-                message,
-                detailsJson: httpStatus === null ? undefined : { httpStatus },
-              },
-              {
-                scope: "classroom",
-                entityType: "user_profiles",
-                entityId: userId,
-                status: "failed",
-                message: `Failed to fetch user profile ${userId}: ${message}`,
-              },
-            );
-            return null;
-          }
-        }),
+        [...userIds].map((userId) =>
+          detailLimit(async () => {
+            try {
+              return await classroom.getUserProfile(userId);
+            } catch (error) {
+              const message = describeError(error);
+              const httpStatus = getErrorStatus(error);
+              recordFailure(
+                {
+                  scope: "classroom",
+                  entityType: "user_profiles",
+                  entityId: userId,
+                  status: "failed",
+                  reasonCode: normalizeClassroomReasonCode(httpStatus),
+                  message,
+                  detailsJson: httpStatus === null ? undefined : { httpStatus },
+                },
+                {
+                  scope: "classroom",
+                  entityType: "user_profiles",
+                  entityId: userId,
+                  status: "failed",
+                  message: `Failed to fetch user profile ${userId}: ${message}`,
+                },
+              );
+              return null;
+            }
+          }),
+        ),
       )
     ).filter((item): item is SyncableUserProfile => item !== null);
 
+    logger?.log("Fetching guardians...");
     const guardians = await fetchGlobalListResource({ entityType: "guardians", fetcher: () => classroom.listGuardians("me") });
+    logger?.log(`Fetching ${guardians.length} guardian details...`);
     const detailedGuardians = await Promise.all(
       guardians.map((guardian) =>
-        fetchCourseDetailResource({
-          courseId: guardian.studentId,
-          entityType: "guardians",
-          itemId: guardian.guardianId,
-          fetcher: () => classroom.getGuardian(guardian.studentId, guardian.guardianId),
-          fallback: guardian,
-        }),
+        detailLimit(() =>
+          fetchCourseDetailResource({
+            courseId: guardian.studentId,
+            entityType: "guardians",
+            itemId: guardian.guardianId,
+            fetcher: () => classroom.getGuardian(guardian.studentId, guardian.guardianId),
+            fallback: guardian,
+          }),
+        ),
       ),
     );
+    logger?.log("Fetching guardian invitations...");
     const guardianInvitations = await fetchGlobalListResource({
       entityType: "guardian_invitations",
       fetcher: () => classroom.listGuardianInvitations("me"),
     });
+    logger?.log(`Fetching ${guardianInvitations.length} guardian invitation details...`);
     const detailedGuardianInvitations = await Promise.all(
       guardianInvitations.map((invitation) =>
-        fetchCourseDetailResource({
-          courseId: invitation.studentId,
-          entityType: "guardian_invitations",
-          itemId: invitation.invitationId,
-          fetcher: () => classroom.getGuardianInvitation(invitation.studentId, invitation.invitationId),
-          fallback: invitation,
-        }),
+        detailLimit(() =>
+          fetchCourseDetailResource({
+            courseId: invitation.studentId,
+            entityType: "guardian_invitations",
+            itemId: invitation.invitationId,
+            fetcher: () => classroom.getGuardianInvitation(invitation.studentId, invitation.invitationId),
+            fallback: invitation,
+          }),
+        ),
       ),
     );
 

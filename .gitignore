@@ -1,0 +1,10 @@
+.claude/
+node_modules/
+dist/
+coverage/
+backup/
+*.sqlite*
+.env*
+client_secret*.json
+oauth-client*.json
+backup-files/

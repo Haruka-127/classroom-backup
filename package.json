@@ -1,0 +1,37 @@
+{
+  "name": "google-classroom-student-backup",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "CLI to back up Google Classroom student data and related Drive files.",
+  "bin": {
+    "classroom-backup": "dist/src/cli.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/cli.ts",
+    "test": "vitest run",
+    "lint": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.10.0",
+    "commander": "^13.1.0",
+    "googleapis": "^144.0.0",
+    "keytar": "^7.9.0",
+    "mime-types": "^2.1.35",
+    "open": "^10.1.0",
+    "p-limit": "^6.2.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/mime-types": "^2.1.4",
+    "@types/node": "^22.13.4",
+    "tsx": "^4.19.2",
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.8"
+  }
+}

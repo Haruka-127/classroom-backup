@@ -1,7 +1,8 @@
+import { existsSync } from "node:fs";
 import { createHash } from "node:crypto";
 
 import { resolveAppPaths } from "../config/app-paths.js";
-import { closeDatabase, openDatabase } from "../storage/db.js";
+import { closeDatabase, openReadOnlyDatabase } from "../storage/db.js";
 import { createRepositories } from "../storage/repositories/index.js";
 
 export interface VerifyCommandOptions {
@@ -10,7 +11,11 @@ export interface VerifyCommandOptions {
 
 export async function runVerifyCommand(options: VerifyCommandOptions): Promise<void> {
   const paths = resolveAppPaths(options.out);
-  const db = openDatabase(paths.databasePath);
+  if (!existsSync(paths.databasePath)) {
+    throw new Error(`Verify failed. backup.sqlite was not found at: ${paths.databasePath}`);
+  }
+
+  const db = openReadOnlyDatabase(paths.databasePath);
 
   try {
     const repositories = createRepositories(db);

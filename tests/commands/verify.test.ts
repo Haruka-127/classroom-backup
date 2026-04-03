@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { mkdtemp } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -66,5 +67,12 @@ describe("runVerifyCommand", () => {
     closeDatabase(db);
 
     await expect(runVerifyCommand({ out: fixture.outDir })).rejects.toThrow(/checksum mismatch/);
+  });
+
+  it("fails when backup.sqlite does not exist", async () => {
+    const outDir = await mkdtemp(path.join(os.tmpdir(), "classroom-verify-missing-"));
+
+    await expect(runVerifyCommand({ out: outDir })).rejects.toThrow(/backup\.sqlite was not found/);
+    expect(existsSync(path.join(outDir, "backup.sqlite"))).toBe(false);
   });
 });

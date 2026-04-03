@@ -35,7 +35,7 @@ export function PeopleTab({ people }: PeopleTabProps) {
     <div className="stack-lg">
       <section className="panel stack-md">
         <div>
-          <h2>教師</h2>
+          <h2>教師 ({people.teachers.length})</h2>
           <p className="muted">このコースに登録されている教師です。</p>
         </div>
         <PersonList people={people.teachers} emptyLabel="教師データは保存されていません。" />
@@ -43,7 +43,7 @@ export function PeopleTab({ people }: PeopleTabProps) {
 
       <section className="panel stack-md">
         <div>
-          <h2>生徒</h2>
+          <h2>生徒 ({people.students.length})</h2>
           <p className="muted">このコースに登録されている生徒です。</p>
         </div>
         <PersonList people={people.students} emptyLabel="生徒データは保存されていません。" />
@@ -51,7 +51,7 @@ export function PeopleTab({ people }: PeopleTabProps) {
 
       <section className="panel stack-md">
         <div>
-          <h2>招待</h2>
+          <h2>招待 ({people.invitations.length})</h2>
           <p className="muted">参加待ちの招待一覧です。</p>
         </div>
         {people.invitations.length > 0 ? (
@@ -71,7 +71,7 @@ export function PeopleTab({ people }: PeopleTabProps) {
 
       <section className="panel stack-md">
         <div>
-          <h2>グループ</h2>
+          <h2>グループ ({people.studentGroups.length})</h2>
           <p className="muted">生徒グループとそのメンバーです。</p>
         </div>
         {people.studentGroups.length > 0 ? (
@@ -100,7 +100,7 @@ export function PeopleTab({ people }: PeopleTabProps) {
 
       <section className="panel stack-md">
         <div>
-          <h2>保護者</h2>
+          <h2>保護者 ({people.guardians.length})</h2>
           <p className="muted">このバックアップ用アカウントに紐づく保護者情報です。</p>
         </div>
         {people.guardians.length > 0 ? (
@@ -119,7 +119,7 @@ export function PeopleTab({ people }: PeopleTabProps) {
 
       <section className="panel stack-md">
         <div>
-          <h2>保護者招待</h2>
+          <h2>保護者招待 ({people.guardianInvitations.length})</h2>
           <p className="muted">保護者リンクの招待状況です。</p>
         </div>
         {people.guardianInvitations.length > 0 ? (

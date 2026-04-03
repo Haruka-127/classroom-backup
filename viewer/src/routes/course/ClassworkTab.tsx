@@ -13,7 +13,10 @@ export function ClassworkTab({ classwork }: ClassworkTabProps) {
     <div className="stack-lg classwork-layout">
       {classwork.sections.map((section) => (
         <details className="topic-section" key={section.topicId ?? "no-topic"} open>
-          <summary>{section.topicName}</summary>
+          <summary>
+            <span>{section.topicName}</span>
+            <span className="topic-count">{section.items.length} 件</span>
+          </summary>
           <div className="stack-md topic-items">
             {section.items.map((item) => (
               <Link className="topic-item" key={`${item.itemType}-${item.id}`} to={item.detailPath}>

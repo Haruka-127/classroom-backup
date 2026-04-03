@@ -42,11 +42,11 @@ export function CourseWorkDetailPage() {
   }
 
   return (
-    <section className="stack-lg panel">
+    <section className="stack-lg detail-page">
       <Link className="back-link" to={`/courses/${encodeURIComponent(detail.courseId)}?tab=classwork`}>
         授業に戻る
       </Link>
-      <div className="stack-sm">
+      <div className="stack-sm panel detail-header-card">
         <span className="pill">{formatWorkTypeLabel(detail.workType)}</span>
         <h1>{detail.title}</h1>
         {detail.topicName ? <p className="muted">トピック: {detail.topicName}</p> : null}

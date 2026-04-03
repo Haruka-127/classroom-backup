@@ -1,0 +1,37 @@
+:root {
+  --classroom-font: "Google Sans Text", "Google Sans", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --classroom-font-body: Roboto, "Helvetica Neue", Arial, sans-serif;
+  --classroom-blue: #0b57d0;
+  --classroom-blue-strong: #1967d2;
+  --classroom-blue-soft: #d3e3fd;
+  --classroom-blue-surface: #f8fafd;
+  --classroom-surface: #ffffff;
+  --classroom-surface-subtle: #f0f4f9;
+  --classroom-surface-muted: #e9eef6;
+  --classroom-page: #f6f8fc;
+  --classroom-border: #c4c7c5;
+  --classroom-border-strong: #747775;
+  --classroom-text: #1f1f1f;
+  --classroom-text-muted: #444746;
+  --classroom-text-faint: #5f6368;
+  --classroom-success: #1e8e3e;
+  --classroom-warning-bg: #fff0d1;
+  --classroom-warning-text: #421f00;
+  --classroom-error: #d50000;
+  --classroom-error-bg: #f9dedc;
+  --classroom-info-bg: #eef4ff;
+  --classroom-shadow: 0 1px 2px rgba(60, 64, 67, 0.08), 0 1px 3px 1px rgba(60, 64, 67, 0.12);
+  --classroom-radius-sm: 12px;
+  --classroom-radius-md: 16px;
+  --classroom-radius-lg: 20px;
+  --classroom-radius-xl: 28px;
+  --classroom-space-1: 4px;
+  --classroom-space-2: 8px;
+  --classroom-space-3: 12px;
+  --classroom-space-4: 16px;
+  --classroom-space-5: 20px;
+  --classroom-space-6: 24px;
+  --classroom-space-8: 32px;
+  --classroom-space-9: 36px;
+  --classroom-space-10: 40px;
+}

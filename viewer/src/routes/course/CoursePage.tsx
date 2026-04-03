@@ -60,11 +60,26 @@ export function CoursePage() {
     <section className="classroom-course-page stack-lg">
       <div className="course-title-row">
         <Link className="back-link" to="/">
-          Classroom
+          クラス一覧
         </Link>
-        <span className="muted">›</span>
+        <span className="muted">/</span>
         <span>{course.name}</span>
       </div>
+      <header className="course-hero classroom-course-hero" style={{ backgroundColor: course.bannerColor }}>
+        <div className="course-hero-copy">
+          <p className="course-hero-section">{course.section || "クラス"}</p>
+          <h1>{course.name}</h1>
+          <div className="course-hero-meta">
+            {course.room ? <span className="course-hero-meta-chip">{course.room}</span> : null}
+            {course.courseState ? <span className="course-hero-meta-chip">{formatCourseStateLabel(course.courseState)}</span> : null}
+          </div>
+        </div>
+        <div className="course-hero-art" aria-hidden="true">
+          <span className="hero-shape hero-grid" />
+          <span className="hero-shape hero-circle" />
+          <span className="hero-shape hero-sheet" />
+        </div>
+      </header>
       <nav className="tabs classroom-tabs" aria-label="Course tabs">
         <button className={tab === "stream" ? "tab-active" : ""} onClick={() => setSearchParams({ tab: "stream" })} type="button">
           ストリーム
@@ -76,18 +91,6 @@ export function CoursePage() {
           メンバー
         </button>
       </nav>
-      <header className="course-hero classroom-course-hero" style={{ background: course.bannerColor }}>
-        <div className="course-hero-copy">
-          <p>{course.section || "クラス"}</p>
-          <h1>{course.name}</h1>
-          <p>{course.room || ""}</p>
-        </div>
-        <div className="course-hero-art" aria-hidden="true">
-          <span className="hero-shape hero-book" />
-          <span className="hero-shape hero-frame" />
-          <span className="hero-shape hero-sheet" />
-        </div>
-      </header>
       {course.descriptionHeading || course.description || course.aliases.length > 0 || course.gradingPeriods.length > 0 || course.alternateLink || course.courseState || course.updateTime ? (
         <section className="panel stack-sm classroom-course-summary">
           {course.descriptionHeading ? <h2>{course.descriptionHeading}</h2> : null}

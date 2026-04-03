@@ -9,6 +9,7 @@ interface PageShellProps {
 
 export function PageShell({ children }: PageShellProps) {
   const { courses, currentCourseId } = useViewerShell();
+  const homeIsCurrent = currentCourseId === null;
 
   return (
     <div className="app-shell">
@@ -23,6 +24,7 @@ export function PageShell({ children }: PageShellProps) {
           </Link>
         </div>
         <div className="topbar-right">
+          <span className="topbar-status muted">Backup viewer</span>
           <span className="avatar-chip" aria-hidden="true">
             W
           </span>
@@ -31,15 +33,12 @@ export function PageShell({ children }: PageShellProps) {
       <div className="classroom-body">
         <aside className="classroom-sidebar">
           <nav className="sidebar-nav" aria-label="ナビゲーション">
-            <Link className="sidebar-link" to="/">
+            <Link className={`sidebar-link${homeIsCurrent ? " is-current" : ""}`} to="/">
               <span className="sidebar-icon">⌂</span>
               <span>ホーム</span>
             </Link>
-            <div className="sidebar-link sidebar-link-static">
-              <span className="sidebar-icon">☰</span>
-              <span>登録科目</span>
-            </div>
           </nav>
+          <p className="sidebar-section-title">登録済みクラス</p>
           <div className="sidebar-course-list">
             {courses.map((course) => {
               const isCurrent = currentCourseId === course.courseId;

@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { createServer } from "node:http";
+import type { Server } from "node:http";
 import { URL } from "node:url";
 import { CodeChallengeMethod } from "google-auth-library";
 import type { Credentials } from "google-auth-library";
@@ -48,10 +49,25 @@ function createPkcePair(): { verifier: string; challenge: string } {
   return { verifier, challenge };
 }
 
+function closeServer(server: Server): Promise<void> {
+  return new Promise((resolve, reject) => {
+    server.close((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve();
+    });
+  });
+}
+
 async function waitForAuthorizationCode(): Promise<{ code: string; redirectUri: string }> {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
-      reject(new Error("Timed out waiting for OAuth callback."));
+      void closeServer(server)
+        .catch(() => undefined)
+        .finally(() => reject(new Error("Timed out waiting for OAuth callback.")));
     }, 5 * 60 * 1000);
 
     const server = createServer((request, response) => {
@@ -61,28 +77,38 @@ async function waitForAuthorizationCode(): Promise<{ code: string; redirectUri: 
 
       response.statusCode = error ? 400 : 200;
       response.setHeader("content-type", "text/html; charset=utf-8");
-      response.end(error ? `<h1>Login failed</h1><p>${error}</p>` : "<h1>Login complete</h1><p>You can close this window.</p>");
 
       clearTimeout(timeout);
-      server.close();
 
-      if (error) {
-        reject(new Error(`OAuth authorization failed: ${error}`));
-        return;
-      }
+      response.end(
+        error ? `<h1>Login failed</h1><p>${error}</p>` : "<h1>Login complete</h1><p>You can close this window.</p>",
+        async () => {
+          try {
+            await closeServer(server);
+          } catch (closeError) {
+            reject(closeError);
+            return;
+          }
 
-      if (!code) {
-        reject(new Error("OAuth callback did not include an authorization code."));
-        return;
-      }
+          if (error) {
+            reject(new Error(`OAuth authorization failed: ${error}`));
+            return;
+          }
 
-      const address = server.address();
-      if (!address || typeof address === "string") {
-        reject(new Error("Unable to resolve local OAuth redirect server address."));
-        return;
-      }
+          if (!code) {
+            reject(new Error("OAuth callback did not include an authorization code."));
+            return;
+          }
 
-      resolve({ code, redirectUri: `http://127.0.0.1:${address.port}/oauth/callback` });
+          const address = server.address();
+          if (!address || typeof address === "string") {
+            reject(new Error("Unable to resolve local OAuth redirect server address."));
+            return;
+          }
+
+          resolve({ code, redirectUri: `http://127.0.0.1:${address.port}/oauth/callback` });
+        },
+      );
     });
 
     server.on("error", reject);
@@ -108,8 +134,9 @@ async function createLoopbackRedirectServer(): Promise<{
       const redirectUri = `http://127.0.0.1:${address.port}/oauth/callback`;
       const waitForCode = new Promise<string>((resolveCode, rejectCode) => {
         const timeout = setTimeout(() => {
-          server.close();
-          rejectCode(new Error("Timed out waiting for OAuth callback."));
+          void closeServer(server)
+            .catch(() => undefined)
+            .finally(() => rejectCode(new Error("Timed out waiting for OAuth callback.")));
         }, 5 * 60 * 1000);
 
         server.removeAllListeners("request");
@@ -120,22 +147,30 @@ async function createLoopbackRedirectServer(): Promise<{
 
           response.statusCode = error ? 400 : 200;
           response.setHeader("content-type", "text/html; charset=utf-8");
-          response.end(error ? `<h1>Login failed</h1><p>${error}</p>` : "<h1>Login complete</h1><p>You can close this window.</p>");
-
           clearTimeout(timeout);
-          server.close();
+          response.end(
+            error ? `<h1>Login failed</h1><p>${error}</p>` : "<h1>Login complete</h1><p>You can close this window.</p>",
+            async () => {
+              try {
+                await closeServer(server);
+              } catch (closeError) {
+                rejectCode(closeError);
+                return;
+              }
 
-          if (error) {
-            rejectCode(new Error(`OAuth authorization failed: ${error}`));
-            return;
-          }
+              if (error) {
+                rejectCode(new Error(`OAuth authorization failed: ${error}`));
+                return;
+              }
 
-          if (!code) {
-            rejectCode(new Error("OAuth callback did not include an authorization code."));
-            return;
-          }
+              if (!code) {
+                rejectCode(new Error("OAuth callback did not include an authorization code."));
+                return;
+              }
 
-          resolveCode(code);
+              resolveCode(code);
+            },
+          );
         });
       });
 

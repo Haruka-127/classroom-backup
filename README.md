@@ -45,7 +45,9 @@ npm install
 npm run build
 ```
 
-3. Google Cloud Console で Installed application 用の OAuth client を作成し、credentials JSON を取得します。
+3. Google Cloud Console で Installed application 用の OAuth client を作成し、credentials JSON を取得します。OAuth 同意画面が Testing の場合は、この CLI で使いたい Google アカウントのメールアドレスを Google Cloud Console の Test users に追加してください。
+
+このとき、OAuth consent screen が未設定なら先に作成してください。個人 Gmail や組織外アカウントで使う場合は通常 `External`、同一 Google Workspace 組織内だけで使う場合は `Internal` を選びます。
 
 4. 初回ログインを実行します。
 
@@ -82,7 +84,28 @@ Google Cloud Console 側で以下を用意してください。
 - Google Drive API
 - Installed app 用 OAuth client credentials JSON
 
+OAuth client を作成する前に、OAuth consent screen を設定してください。
+
+1. Google Cloud Console で対象プロジェクトを開く
+2. `Google Auth Platform` または `APIs & Services` から OAuth consent screen を開く
+3. App name と user support email を設定する
+4. Audience を選ぶ
+
+`Audience` の目安:
+
+- 個人 Gmail や組織外のアカウントで使う場合: `External`
+- 同じ Google Workspace 組織のアカウントだけで使う場合: `Internal`
+
+OAuth 同意画面が Testing の場合は、認証に使う Google アカウントを Google Cloud Console の Test users に追加してください。
+
+1. Google Cloud Console で対象プロジェクトを開く
+2. `Google Auth Platform` または `APIs & Services` から OAuth consent screen を開く
+3. `Audience` または `Test users` セクションを開く
+4. このアプリで `login` したいアカウントのメールアドレスを追加して保存する
+
 `login` は loopback redirect を使うため、ローカルブラウザで認証ページを開ける環境が必要です。
+
+また、`login` で取得したトークンは `keytar` 経由で OS の secure storage に保存されます。キーチェーンや資格情報ストアが使えない環境では、初回ログインや再認証に失敗することがあります。
 
 ### 2. OAuth scope
 
